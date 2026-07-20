@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../workout/workout_theme.dart';
 import 'add_food_dialog.dart';
 import 'nutrition_models.dart';
+import 'nutrition_store.dart';
 
 class NutritionPage extends StatefulWidget {
   const NutritionPage({super.key});
@@ -11,7 +12,21 @@ class NutritionPage extends StatefulWidget {
 }
 
 class _NutritionPageState extends State<NutritionPage> {
-  final _entries = <FoodEntry>[];
+  final _store = NutritionStore();
+  late Future<void> _loadFuture;
+  var _entries = <FoodEntry>[];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadFuture = _loadEntries();
+  }
+
+  Future<void> _loadEntries() async {
+    final entries = await _store.loadForDate(DateTime.now());
+    if (!mounted) return;
+    setState(() => _entries = entries);
+  }
 
   NutritionTotals get _totals => NutritionTotals.fromEntries(_entries);
 
@@ -21,11 +36,17 @@ class _NutritionPageState extends State<NutritionPage> {
       builder: (_) => AddFoodDialog(initialMeal: meal),
     );
     if (!mounted || entry == null) return;
-    setState(() => _entries.add(entry));
+    await _loadFuture;
+    if (!mounted) return;
+    final id = await _store.insert(entry);
+    if (!mounted) return;
+    setState(() => _entries = [..._entries, entry.copyWith(id: id)]);
   }
 
-  void _removeFood(FoodEntry entry) {
-    setState(() => _entries.remove(entry));
+  Future<void> _removeFood(FoodEntry entry) async {
+    await _store.delete(entry.id);
+    if (!mounted) return;
+    setState(() => _entries = _entries.where((item) => item != entry).toList());
   }
 
   @override

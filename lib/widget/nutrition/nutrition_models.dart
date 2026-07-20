@@ -47,6 +47,7 @@ extension MealTypeDetails on MealType {
 
 class FoodEntry {
   FoodEntry({
+    this.id,
     required this.name,
     required this.meal,
     required this.grams,
@@ -57,6 +58,7 @@ class FoodEntry {
     DateTime? createdAt,
   }) : createdAt = createdAt ?? DateTime.now();
 
+  final int? id;
   final String name;
   final MealType meal;
   final double grams;
@@ -65,6 +67,20 @@ class FoodEntry {
   final double carbs;
   final double fat;
   final DateTime createdAt;
+
+  FoodEntry copyWith({int? id}) {
+    return FoodEntry(
+      id: id ?? this.id,
+      name: name,
+      meal: meal,
+      grams: grams,
+      calories: calories,
+      protein: protein,
+      carbs: carbs,
+      fat: fat,
+      createdAt: createdAt,
+    );
+  }
 }
 
 class NutritionValues {

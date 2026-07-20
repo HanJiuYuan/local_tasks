@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:local_tasks/widget/workout/workout_page.dart';
+import 'package:local_tasks/widget/workout/workout_store.dart';
 
 void main() {
   testWidgets('adds a custom action with the new action dialog', (
     tester,
   ) async {
+    await WorkoutStore().clear();
     await tester.pumpWidget(const MaterialApp(home: WorkoutAssistantPage()));
     await tester.pumpAndSettle();
 
@@ -29,6 +31,7 @@ void main() {
   testWidgets('walks through the workout flow to today summary', (
     tester,
   ) async {
+    await WorkoutStore().clear();
     await tester.pumpWidget(const MaterialApp(home: WorkoutAssistantPage()));
     await tester.pumpAndSettle();
 

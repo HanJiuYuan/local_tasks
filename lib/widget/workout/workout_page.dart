@@ -12,6 +12,7 @@ import 'select_action_page.dart';
 import 'start_training_page.dart';
 import 'today_summary_page.dart';
 import 'workout_models.dart';
+import 'workout_store.dart';
 import 'workout_theme.dart';
 
 enum _WorkoutStep {
@@ -230,7 +231,8 @@ class _WorkoutAssistantPageState extends State<WorkoutAssistantPage> {
     for (final template in _quickExerciseTemplates) template.resolve(_profile),
   ];
 
-  late final List<WorkoutExercise> _exercises = [
+  final _store = WorkoutStore();
+  late List<WorkoutExercise> _exercises = [
     _estimatedExercise('杠铃卧推', .85, 4, 12),
     _estimatedExercise('杠铃深蹲', 1.10, 4, 10),
     _estimatedExercise('哑铃弯举', .17, 3, 12),
@@ -246,6 +248,41 @@ class _WorkoutAssistantPageState extends State<WorkoutAssistantPage> {
   bool _soundEnabled = true;
   bool _historyRecorded = false;
   DateTime? _trainingStartedAt;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadStoredWorkout();
+  }
+
+  Future<void> _loadStoredWorkout() async {
+    final stored = await _store.load();
+    if (!mounted || stored == null) return;
+    setState(() {
+      final profile = stored.profile;
+      if (profile != null) {
+        _bodyWeightKg = profile.bodyWeightKg;
+        _heightCm = profile.heightCm;
+        _bodyFatPercent = profile.bodyFatPercent;
+        _trainingDays = profile.trainingDays;
+        _experience = profile.experience;
+      }
+      if (stored.exercises.isNotEmpty) {
+        _exercises = stored.exercises;
+      }
+      _history
+        ..clear()
+        ..addAll(stored.history);
+    });
+  }
+
+  Future<void> _persistWorkout() {
+    return _store.saveState(
+      profile: _profile,
+      exercises: _exercises,
+      history: _history,
+    );
+  }
 
   List<WorkoutExercise> get _selectedExercises =>
       _exercises.where((exercise) => exercise.selected).toList();
@@ -291,6 +328,7 @@ class _WorkoutAssistantPageState extends State<WorkoutAssistantPage> {
         exercise.weightPending = false;
       }
     });
+    unawaited(_persistWorkout());
   }
 
   WorkoutExercise get _activeExercise => _exercises[_activeIndex];
@@ -353,6 +391,7 @@ class _WorkoutAssistantPageState extends State<WorkoutAssistantPage> {
 
   void _toggleExercise(WorkoutExercise exercise) {
     setState(() => exercise.selected = !exercise.selected);
+    unawaited(_persistWorkout());
   }
 
   void _addQuickExercise(QuickExercise quick) {
@@ -361,6 +400,7 @@ class _WorkoutAssistantPageState extends State<WorkoutAssistantPage> {
     );
     if (existingIndex >= 0) {
       setState(() => _exercises[existingIndex].selected = true);
+      unawaited(_persistWorkout());
       return;
     }
 
@@ -377,6 +417,7 @@ class _WorkoutAssistantPageState extends State<WorkoutAssistantPage> {
         ),
       );
     });
+    unawaited(_persistWorkout());
   }
 
   Future<void> _addCustomExercise() async {
@@ -387,6 +428,7 @@ class _WorkoutAssistantPageState extends State<WorkoutAssistantPage> {
     );
     if (!mounted || exercise == null) return;
     setState(() => _exercises.add(exercise));
+    unawaited(_persistWorkout());
   }
 
   void _deleteExercise(WorkoutExercise exercise) {
@@ -398,6 +440,7 @@ class _WorkoutAssistantPageState extends State<WorkoutAssistantPage> {
         _activeIndex = _exercises.length - 1;
       }
     });
+    unawaited(_persistWorkout());
   }
 
   Future<void> _adjustExercise(WorkoutExercise exercise) async {
@@ -419,6 +462,7 @@ class _WorkoutAssistantPageState extends State<WorkoutAssistantPage> {
       exercise.weightPending = false;
       exercise.estimateCoefficient = null;
     });
+    unawaited(_persistWorkout());
   }
 
   void _startTrainingPreparation() {
@@ -451,6 +495,7 @@ class _WorkoutAssistantPageState extends State<WorkoutAssistantPage> {
         _restSeconds = _activeExercise.restSeconds;
       },
     );
+    unawaited(_persistWorkout());
     _startRestClock();
   }
 
@@ -517,6 +562,7 @@ class _WorkoutAssistantPageState extends State<WorkoutAssistantPage> {
         duration: _trainingDuration,
       ),
     );
+    unawaited(_persistWorkout());
   }
 
   void _restartTraining() {
@@ -536,6 +582,7 @@ class _WorkoutAssistantPageState extends State<WorkoutAssistantPage> {
       _historyRecorded = false;
       _step = _WorkoutStep.selectAction;
     });
+    unawaited(_persistWorkout());
     _animateFlowToTop();
   }
 

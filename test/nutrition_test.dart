@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:local_tasks/main.dart';
+import 'package:local_tasks/widget/nutrition/nutrition_store.dart';
 
 void main() {
   testWidgets('adds a food entry and updates today totals', (tester) async {
+    await NutritionStore().clear();
     await tester.pumpWidget(const MyApp());
     await tester.pumpAndSettle();
 
