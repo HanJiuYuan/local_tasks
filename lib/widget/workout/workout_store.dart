@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:convert';
 
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
@@ -33,7 +34,7 @@ class WorkoutStore {
     final databasePath = await _databasePath();
     final opened = await openDatabase(
       databasePath,
-      version: 1,
+      version: 4,
       onCreate: (database, _) async {
         await database.execute('''
 CREATE TABLE workout_profile (
@@ -52,6 +53,7 @@ CREATE TABLE workout_exercises (
   weight REAL NOT NULL,
   sets INTEGER NOT NULL,
   reps INTEGER NOT NULL,
+  body_part TEXT NOT NULL DEFAULT '其他',
   rest_seconds INTEGER NOT NULL,
   selected INTEGER NOT NULL,
   is_bodyweight INTEGER NOT NULL,
@@ -72,9 +74,31 @@ CREATE TABLE workout_history (
   exercise_count INTEGER NOT NULL,
   completed_sets INTEGER NOT NULL,
   volume REAL NOT NULL,
-  duration_seconds INTEGER NOT NULL
+  duration_seconds INTEGER NOT NULL,
+  is_partial INTEGER NOT NULL DEFAULT 0,
+  details_json TEXT NOT NULL DEFAULT '[]'
 )
 ''');
+      },
+      onUpgrade: (database, oldVersion, newVersion) async {
+        if (oldVersion < 2) {
+          await database.execute(
+            'ALTER TABLE workout_history ADD COLUMN '
+            'is_partial INTEGER NOT NULL DEFAULT 0',
+          );
+        }
+        if (oldVersion < 3) {
+          await database.execute(
+            'ALTER TABLE workout_history ADD COLUMN '
+            "details_json TEXT NOT NULL DEFAULT '[]'",
+          );
+        }
+        if (oldVersion < 4) {
+          await database.execute(
+            'ALTER TABLE workout_exercises ADD COLUMN '
+            "body_part TEXT NOT NULL DEFAULT '其他'",
+          );
+        }
       },
     );
     _sharedDatabase = opened;
@@ -139,7 +163,7 @@ CREATE TABLE workout_history (
       _testState = WorkoutStoredState(
         profile: profile,
         exercises: exercises.map(_cloneExercise).toList(),
-        history: [...history],
+        history: history.map(_cloneHistoryRecord).toList(),
       );
       return;
     }
@@ -192,6 +216,8 @@ CREATE TABLE workout_history (
   }
 
   WorkoutExercise _exerciseFromRow(Map<String, Object?> row) {
+    final storedWeight = (row['weight'] as num?)?.toDouble() ?? 0;
+    final isBodyweight = (row['is_bodyweight'] as int? ?? 0) == 1;
     final feedback =
         (row['rir_feedback'] as String? ?? '')
             .split(',')
@@ -201,13 +227,19 @@ CREATE TABLE workout_history (
             .toList();
     final exercise = WorkoutExercise(
       name: row['name'] as String? ?? '',
-      weight: (row['weight'] as num?)?.toDouble() ?? 0,
+      weight: storedWeight,
       sets: row['sets'] as int? ?? 0,
       reps: row['reps'] as int? ?? 0,
+      bodyPart: _storedBodyPart(
+        row['name'] as String? ?? '',
+        row['body_part'] as String?,
+      ),
       restSeconds: row['rest_seconds'] as int? ?? 90,
       selected: (row['selected'] as int? ?? 0) == 1,
-      isBodyweight: (row['is_bodyweight'] as int? ?? 0) == 1,
-      weightPending: (row['weight_pending'] as int? ?? 0) == 1,
+      isBodyweight: isBodyweight,
+      weightPending:
+          (row['weight_pending'] as int? ?? 0) == 1 ||
+          (storedWeight <= 0 && !isBodyweight),
       estimateCoefficient: (row['estimate_coefficient'] as num?)?.toDouble(),
       firstTestWeight: (row['first_test_weight'] as num?)?.toDouble(),
       firstTestReps: row['first_test_reps'] as int?,
@@ -219,6 +251,20 @@ CREATE TABLE workout_history (
     return exercise;
   }
 
+  String _storedBodyPart(String name, String? storedBodyPart) {
+    if (storedBodyPart != null && storedBodyPart != '其他') {
+      return storedBodyPart;
+    }
+    return switch (name) {
+      '杠铃卧推' || '上斜哑铃卧推' || '双杠臂屈伸' || '俯卧撑' || '器械夹胸' => '胸',
+      '杠铃划船' || '高位下拉' || '坐姿划船' || '引体向上' => '背',
+      '哑铃推肩' || '哑铃侧平举' || '杠铃推举' => '肩',
+      '杠铃深蹲' || '罗马尼亚硬拉' || '腿举' || '腿弯举' => '腿',
+      '哑铃弯举' || '绳索下压' || '锤式弯举' => '手臂',
+      _ => storedBodyPart ?? '其他',
+    };
+  }
+
   WorkoutHistoryRecord _historyFromRow(Map<String, Object?> row) {
     return WorkoutHistoryRecord(
       date: DateTime.fromMillisecondsSinceEpoch(
@@ -228,7 +274,36 @@ CREATE TABLE workout_history (
       completedSets: row['completed_sets'] as int? ?? 0,
       volume: (row['volume'] as num?)?.toDouble() ?? 0,
       duration: Duration(seconds: row['duration_seconds'] as int? ?? 0),
+      exercises: _historyExercisesFromJson(row['details_json'] as String?),
+      isPartial: (row['is_partial'] as int? ?? 0) == 1,
     );
+  }
+
+  List<WorkoutHistoryExercise> _historyExercisesFromJson(String? value) {
+    if (value == null || value.isEmpty) return const [];
+    try {
+      final decoded = jsonDecode(value);
+      if (decoded is! List) return const [];
+      return [
+        for (final item in decoded)
+          if (item is Map<String, dynamic>)
+            WorkoutHistoryExercise(
+              name: item['name'] as String? ?? '',
+              weight: (item['weight'] as num?)?.toDouble() ?? 0,
+              sets: item['sets'] as int? ?? 0,
+              reps: item['reps'] as int? ?? 0,
+              completedSets: item['completedSets'] as int? ?? 0,
+              restSeconds: item['restSeconds'] as int? ?? 90,
+              rirFeedback: [
+                for (final rir in (item['rirFeedback'] as List? ?? const []))
+                  if (rir is num) rir.toInt(),
+              ],
+              isBodyweight: item['isBodyweight'] == true,
+            ),
+      ];
+    } on FormatException {
+      return const [];
+    }
   }
 
   Map<String, Object?> _profileToRow(TrainingProfile profile) {
@@ -251,6 +326,7 @@ CREATE TABLE workout_history (
       'weight': exercise.weight,
       'sets': exercise.sets,
       'reps': exercise.reps,
+      'body_part': exercise.bodyPart,
       'rest_seconds': exercise.restSeconds,
       'selected': exercise.selected ? 1 : 0,
       'is_bodyweight': exercise.isBodyweight ? 1 : 0,
@@ -272,6 +348,20 @@ CREATE TABLE workout_history (
       'completed_sets': record.completedSets,
       'volume': record.volume,
       'duration_seconds': record.duration.inSeconds,
+      'is_partial': record.isPartial ? 1 : 0,
+      'details_json': jsonEncode([
+        for (final exercise in record.exercises)
+          {
+            'name': exercise.name,
+            'weight': exercise.weight,
+            'sets': exercise.sets,
+            'reps': exercise.reps,
+            'completedSets': exercise.completedSets,
+            'restSeconds': exercise.restSeconds,
+            'rirFeedback': exercise.rirFeedback,
+            'isBodyweight': exercise.isBodyweight,
+          },
+      ]),
     };
   }
 
@@ -280,7 +370,31 @@ CREATE TABLE workout_history (
     return WorkoutStoredState(
       profile: state.profile,
       exercises: state.exercises.map(_cloneExercise).toList(),
-      history: [...state.history],
+      history: state.history.map(_cloneHistoryRecord).toList(),
+    );
+  }
+
+  WorkoutHistoryRecord _cloneHistoryRecord(WorkoutHistoryRecord source) {
+    return WorkoutHistoryRecord(
+      date: source.date,
+      exerciseCount: source.exerciseCount,
+      completedSets: source.completedSets,
+      volume: source.volume,
+      duration: source.duration,
+      exercises: [
+        for (final exercise in source.exercises)
+          WorkoutHistoryExercise(
+            name: exercise.name,
+            weight: exercise.weight,
+            sets: exercise.sets,
+            reps: exercise.reps,
+            completedSets: exercise.completedSets,
+            restSeconds: exercise.restSeconds,
+            rirFeedback: [...exercise.rirFeedback],
+            isBodyweight: exercise.isBodyweight,
+          ),
+      ],
+      isPartial: source.isPartial,
     );
   }
 
@@ -290,6 +404,7 @@ CREATE TABLE workout_history (
       weight: source.weight,
       sets: source.sets,
       reps: source.reps,
+      bodyPart: source.bodyPart,
       restSeconds: source.restSeconds,
       selected: source.selected,
       isBodyweight: source.isBodyweight,

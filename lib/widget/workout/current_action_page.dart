@@ -8,15 +8,27 @@ class CurrentActionPage extends StatelessWidget {
     required this.exercise,
     required this.actionNumber,
     required this.totalActions,
-    required this.onCompleteAction,
+    required this.rir,
+    required this.onRirChanged,
+    required this.onConfirmSet,
+    required this.onAdjust,
+    required this.onSwitchAction,
+    required this.onAddAction,
     required this.onBack,
+    this.showStepLabel = true,
   });
 
   final WorkoutExercise exercise;
   final int actionNumber;
   final int totalActions;
-  final VoidCallback onCompleteAction;
+  final int rir;
+  final ValueChanged<int> onRirChanged;
+  final VoidCallback onConfirmSet;
+  final VoidCallback onAdjust;
+  final VoidCallback onSwitchAction;
+  final VoidCallback onAddAction;
   final VoidCallback onBack;
+  final bool showStepLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -28,8 +40,7 @@ class CurrentActionPage extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _stepLabel(),
-            const SizedBox(height: 16),
+            if (showStepLabel) ...[_stepLabel(), const SizedBox(height: 16)],
             workoutPanel(
               padding: const EdgeInsets.fromLTRB(24, 24, 24, 22),
               child: Column(
@@ -164,11 +175,51 @@ class CurrentActionPage extends StatelessWidget {
                       color: WorkoutColors.blue,
                     ),
                   ]),
+                  const SizedBox(height: 24),
+                  Row(
+                    children: [
+                      const Text(
+                        '本组 RIR',
+                        style: TextStyle(
+                          color: WorkoutColors.text,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(child: _rirField()),
+                    ],
+                  ),
                   const SizedBox(height: 28),
                   workoutPrimaryButton(
-                    label: '进入“完成动作”',
-                    icon: Icons.check_rounded,
-                    onPressed: onCompleteAction,
+                    label: '确认完成第 ${exercise.completedSets + 1} 组',
+                    icon: Icons.check_circle_rounded,
+                    onPressed: onConfirmSet,
+                  ),
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      OutlinedButton.icon(
+                        onPressed: onAdjust,
+                        icon: const Icon(Icons.tune_rounded, size: 16),
+                        label: const Text('调整本动作'),
+                        style: _smallActionStyle(),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: onSwitchAction,
+                        icon: const Icon(Icons.swap_horiz_rounded, size: 16),
+                        label: const Text('切换动作'),
+                        style: _smallActionStyle(),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: onAddAction,
+                        icon: const Icon(Icons.add_rounded, size: 16),
+                        label: const Text('添加动作'),
+                        style: _smallActionStyle(),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 10),
                   SizedBox(
@@ -185,6 +236,66 @@ class CurrentActionPage extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  ButtonStyle _smallActionStyle() {
+    return OutlinedButton.styleFrom(
+      foregroundColor: WorkoutColors.muted,
+      side: const BorderSide(color: WorkoutColors.border),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      textStyle: const TextStyle(fontSize: 11),
+    );
+  }
+
+  Widget _rirField() {
+    return DropdownButtonFormField<int>(
+      value: rir,
+      isExpanded: true,
+      decoration: InputDecoration(
+        filled: true,
+        fillColor: WorkoutColors.panelSoft,
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 12,
+          vertical: 10,
+        ),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: const BorderSide(color: WorkoutColors.border),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: const BorderSide(color: WorkoutColors.border),
+        ),
+      ),
+      dropdownColor: WorkoutColors.panel,
+      style: const TextStyle(color: WorkoutColors.text, fontSize: 13),
+      items: List.generate(
+        5,
+        (index) => DropdownMenuItem(
+          value: index,
+          child: Text('$index · ${_rirLabel(index)}'),
+        ),
+      ),
+      onChanged: (value) {
+        if (value != null) onRirChanged(value);
+      },
+    );
+  }
+
+  String _rirLabel(int value) {
+    switch (value) {
+      case 0:
+        return '已经力竭';
+      case 1:
+        return '还能做 1 次';
+      case 2:
+        return '还能做 2 次';
+      case 3:
+        return '还能做 3 次';
+      default:
+        return '还能做 4 次以上';
+    }
   }
 
   Widget _stepLabel() {

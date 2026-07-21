@@ -15,6 +15,9 @@ class SelectActionPage extends StatelessWidget {
     required this.onAdjustExercise,
     required this.onDeleteExercise,
     required this.onStartTraining,
+    required this.onHistory,
+    required this.selectedBodyPart,
+    required this.onBodyPartChanged,
   });
 
   final List<WorkoutExercise> exercises;
@@ -27,12 +30,22 @@ class SelectActionPage extends StatelessWidget {
   final ValueChanged<WorkoutExercise> onAdjustExercise;
   final ValueChanged<WorkoutExercise> onDeleteExercise;
   final VoidCallback onStartTraining;
+  final VoidCallback onHistory;
+  final String? selectedBodyPart;
+  final ValueChanged<String?> onBodyPartChanged;
+
+  static const _bodyParts = ['全部', '胸', '背', '肩', '腿', '手臂', '核心', '其他'];
 
   List<WorkoutExercise> get selectedExercises =>
       exercises.where((exercise) => exercise.selected).toList();
 
   int get selectedSets =>
       selectedExercises.fold(0, (total, exercise) => total + exercise.sets);
+
+  List<WorkoutExercise> get pendingWeightExercises =>
+      selectedExercises
+          .where((exercise) => !exercise.isBodyweight && exercise.weightPending)
+          .toList();
 
   Map<String, List<QuickExercise>> get groupedQuickExercises {
     final grouped = <String, List<QuickExercise>>{};
@@ -81,21 +94,46 @@ class SelectActionPage extends StatelessWidget {
   }
 
   Widget _intro() {
-    return Column(
+    return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          '选择今天要练的动作',
-          style: TextStyle(
-            color: WorkoutColors.text,
-            fontSize: 28,
-            fontWeight: FontWeight.w800,
+        const Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '选择今天要练的动作',
+                style: TextStyle(
+                  color: WorkoutColors.text,
+                  fontSize: 28,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              SizedBox(height: 7),
+              Text(
+                '先选好动作和训练参数，开始后只需要专注于当前这一组。',
+                style: TextStyle(color: WorkoutColors.muted, fontSize: 14),
+              ),
+            ],
           ),
         ),
-        const SizedBox(height: 7),
-        const Text(
-          '先选好动作和训练参数，开始后只需要专注于当前这一组。',
-          style: TextStyle(color: WorkoutColors.muted, fontSize: 14),
+        const SizedBox(width: 10),
+        OutlinedButton.icon(
+          onPressed: onHistory,
+          icon: const Icon(Icons.history_rounded, size: 17),
+          label: const Text('历史记录'),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: WorkoutColors.text,
+            side: const BorderSide(color: WorkoutColors.border),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(11),
+            ),
+            textStyle: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
         ),
       ],
     );
@@ -260,13 +298,39 @@ class SelectActionPage extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    exercise.name,
-                    style: const TextStyle(
-                      color: WorkoutColors.text,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w800,
-                    ),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          exercise.name,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: WorkoutColors.text,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 5,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: WorkoutColors.greenDark,
+                          borderRadius: BorderRadius.circular(5),
+                        ),
+                        child: Text(
+                          exercise.bodyPart,
+                          style: const TextStyle(
+                            color: WorkoutColors.green,
+                            fontSize: 9,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 4),
                   Text(
@@ -329,6 +393,40 @@ class SelectActionPage extends StatelessWidget {
                 : '共 $selectedSets 组，完成后会自动生成今日数据。',
             style: const TextStyle(color: WorkoutColors.muted, fontSize: 12),
           ),
+          if (pendingWeightExercises.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+              decoration: BoxDecoration(
+                color: WorkoutColors.amber.withValues(alpha: .12),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: WorkoutColors.amber.withValues(alpha: .35),
+                ),
+              ),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.warning_amber_rounded,
+                    color: WorkoutColors.amber,
+                    size: 17,
+                  ),
+                  const SizedBox(width: 7),
+                  Expanded(
+                    child: Text(
+                      '有 ${pendingWeightExercises.length} 个动作未设置重量，请先填写身体数据或调整重量。',
+                      style: const TextStyle(
+                        color: WorkoutColors.text,
+                        fontSize: 11,
+                        height: 1.35,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
           const SizedBox(height: 18),
           workoutPrimaryButton(
             label: '开始今日训练',
@@ -361,13 +459,66 @@ class SelectActionPage extends StatelessWidget {
           const SizedBox(height: 7),
           TrainingProfileEditor(profile: profile, onApply: onProfileChanged),
           const SizedBox(height: 10),
-          for (final group in groupedQuickExercises.entries) ...[
-            _quickGroup(group.key, group.value),
-            if (group.key != groupedQuickExercises.keys.last)
-              const SizedBox(height: 15),
-          ],
+          _bodyPartFilters(),
+          const SizedBox(height: 10),
+          if (_visibleQuickGroups().isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 18),
+              child: Center(
+                child: Text(
+                  '这个部位暂无快捷动作，可以新增自定义动作。',
+                  style: TextStyle(color: WorkoutColors.muted, fontSize: 11),
+                ),
+              ),
+            )
+          else
+            for (final group in _visibleQuickGroups())
+              _quickGroup(group.key, group.value),
         ],
       ),
+    );
+  }
+
+  List<MapEntry<String, List<QuickExercise>>> _visibleQuickGroups() {
+    return groupedQuickExercises.entries
+        .where(
+          (group) => selectedBodyPart == null || group.key == selectedBodyPart,
+        )
+        .toList();
+  }
+
+  Widget _bodyPartFilters() {
+    return Wrap(
+      spacing: 7,
+      runSpacing: 7,
+      children: [
+        for (final bodyPart in _bodyParts)
+          FilterChip(
+            label: Text(bodyPart),
+            selected:
+                bodyPart == '全部'
+                    ? selectedBodyPart == null
+                    : selectedBodyPart == bodyPart,
+            onSelected:
+                (_) => onBodyPartChanged(bodyPart == '全部' ? null : bodyPart),
+            selectedColor: WorkoutColors.greenDark,
+            backgroundColor: WorkoutColors.background,
+            checkmarkColor: WorkoutColors.green,
+            side: const BorderSide(color: WorkoutColors.border),
+            labelStyle: TextStyle(
+              color:
+                  (bodyPart == '全部'
+                          ? selectedBodyPart == null
+                          : selectedBodyPart == bodyPart)
+                      ? WorkoutColors.green
+                      : WorkoutColors.muted,
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 3),
+            visualDensity: VisualDensity.compact,
+          ),
+      ],
     );
   }
 
@@ -382,23 +533,13 @@ class SelectActionPage extends StatelessWidget {
       _ => Icons.fitness_center_rounded,
     };
 
-    return Theme(
-      data: ThemeData(
-        splashColor: WorkoutColors.green.withValues(alpha: .08),
-        highlightColor: WorkoutColors.green.withValues(alpha: .05),
-        dividerColor: Colors.transparent,
-      ),
-      child: ExpansionTile(
-        initiallyExpanded: bodyPart == '胸',
-        tilePadding: EdgeInsets.zero,
-        childrenPadding: EdgeInsets.zero,
-        collapsedIconColor: WorkoutColors.muted,
-        iconColor: WorkoutColors.green,
-        shape: const Border(),
-        collapsedShape: const Border(),
-        leading: Icon(icon, color: WorkoutColors.green, size: 16),
-        title: Row(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
           children: [
+            Icon(icon, color: WorkoutColors.green, size: 16),
+            const SizedBox(width: 8),
             Text(
               bodyPart,
               style: const TextStyle(
@@ -414,61 +555,57 @@ class SelectActionPage extends StatelessWidget {
             ),
           ],
         ),
-        children: [
-          GridView.builder(
-            itemCount: items.length,
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              crossAxisSpacing: 8,
-              mainAxisSpacing: 8,
-              mainAxisExtent: 54,
-            ),
-            itemBuilder: (context, index) {
-              final item = items[index];
-              return InkWell(
-                onTap: () => onAddQuickExercise(item),
-                borderRadius: BorderRadius.circular(10),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 9,
-                    vertical: 7,
-                  ),
-                  decoration: BoxDecoration(
-                    color: WorkoutColors.background,
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: WorkoutColors.border),
-                  ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          item.name,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: WorkoutColors.text,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        '${item.weightLabel} · ${item.sets}组',
-                        style: const TextStyle(
-                          color: WorkoutColors.muted,
-                          fontSize: 10,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
+        const SizedBox(height: 8),
+        GridView.builder(
+          itemCount: items.length,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 2,
+            crossAxisSpacing: 8,
+            mainAxisSpacing: 8,
+            mainAxisExtent: 54,
           ),
-        ],
-      ),
+          itemBuilder: (context, index) {
+            final item = items[index];
+            return InkWell(
+              onTap: () => onAddQuickExercise(item),
+              borderRadius: BorderRadius.circular(10),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
+                decoration: BoxDecoration(
+                  color: WorkoutColors.background,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: WorkoutColors.border),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        item.name,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: WorkoutColors.text,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      '${item.weightLabel} · ${item.sets}组',
+                      style: const TextStyle(
+                        color: WorkoutColors.muted,
+                        fontSize: 10,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
+      ],
     );
   }
 }

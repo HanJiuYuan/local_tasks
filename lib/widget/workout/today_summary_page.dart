@@ -9,6 +9,7 @@ class TodaySummaryPage extends StatelessWidget {
     required this.completedSets,
     required this.volume,
     required this.duration,
+    required this.isPartial,
     required this.onHistory,
     required this.onRestart,
   });
@@ -17,6 +18,7 @@ class TodaySummaryPage extends StatelessWidget {
   final int completedSets;
   final double volume;
   final Duration duration;
+  final bool isPartial;
   final VoidCallback onHistory;
   final VoidCallback onRestart;
 
@@ -28,8 +30,8 @@ class TodaySummaryPage extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              '今日训练完成',
+            Text(
+              isPartial ? '本次训练已保存' : '今日训练完成',
               style: TextStyle(
                 color: WorkoutColors.text,
                 fontSize: 28,
@@ -37,8 +39,8 @@ class TodaySummaryPage extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 7),
-            const Text(
-              '做得很好，今天的训练数据已经整理好了。',
+            Text(
+              isPartial ? '已把目前完成的动作和组数记录下来，之后还可以继续训练。' : '做得很好，今天的训练数据已经整理好了。',
               style: TextStyle(color: WorkoutColors.muted, fontSize: 13),
             ),
             const SizedBox(height: 22),
@@ -61,8 +63,8 @@ class TodaySummaryPage extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 15),
-                  const Text(
-                    '完成全部训练！',
+                  Text(
+                    isPartial ? '已保存部分训练' : '完成全部训练！',
                     style: TextStyle(
                       color: WorkoutColors.text,
                       fontSize: 20,
@@ -70,8 +72,8 @@ class TodaySummaryPage extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 7),
-                  const Text(
-                    '每一组都被准确记录，明天继续保持。',
+                  Text(
+                    isPartial ? '已完成的内容已经进入训练历史。' : '每一组都被准确记录，明天继续保持。',
                     style: TextStyle(color: WorkoutColors.muted, fontSize: 12),
                   ),
                   const SizedBox(height: 22),

@@ -15,6 +15,7 @@ class _AddCustomActionDialogState extends State<AddCustomActionDialog> {
   int _reps = 12;
   int _weight = 40;
   int _restSeconds = 90;
+  String _bodyPart = '其他';
 
   @override
   void dispose() {
@@ -32,6 +33,7 @@ class _AddCustomActionDialogState extends State<AddCustomActionDialog> {
         weight: _weight.toDouble(),
         sets: _sets,
         reps: _reps,
+        bodyPart: _bodyPart,
         restSeconds: _restSeconds,
       ),
     );
@@ -107,6 +109,8 @@ class _AddCustomActionDialogState extends State<AddCustomActionDialog> {
                 style: const TextStyle(color: WorkoutColors.text, fontSize: 13),
                 decoration: _inputDecoration('输入如：哑铃侧平举'),
               ),
+              const SizedBox(height: 13),
+              _bodyPartField(),
               const SizedBox(height: 14),
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -249,6 +253,46 @@ class _AddCustomActionDialogState extends State<AddCustomActionDialog> {
               ),
               _stepperButton(Icons.add_rounded, onIncrease),
             ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _bodyPartField() {
+    const bodyParts = ['胸', '背', '肩', '腿', '手臂', '核心', '其他'];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _label('训练部位'),
+        const SizedBox(height: 6),
+        Container(
+          height: 40,
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          decoration: BoxDecoration(
+            color: WorkoutColors.background,
+            borderRadius: BorderRadius.circular(9),
+            border: Border.all(color: WorkoutColors.border),
+          ),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<String>(
+              value: _bodyPart,
+              isExpanded: true,
+              dropdownColor: WorkoutColors.panelSoft,
+              icon: const Icon(
+                Icons.keyboard_arrow_down_rounded,
+                color: WorkoutColors.text,
+                size: 19,
+              ),
+              style: const TextStyle(color: WorkoutColors.text, fontSize: 12),
+              items: [
+                for (final bodyPart in bodyParts)
+                  DropdownMenuItem(value: bodyPart, child: Text(bodyPart)),
+              ],
+              onChanged: (value) {
+                if (value != null) setState(() => _bodyPart = value);
+              },
+            ),
           ),
         ),
       ],

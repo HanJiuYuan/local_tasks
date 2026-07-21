@@ -4,26 +4,28 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'add_custom_action_dialog.dart';
 import 'adjust_exercise_dialog.dart';
-import 'complete_action_page.dart';
-import 'current_action_page.dart';
 import 'history_page.dart';
-import 'rest_page.dart';
 import 'select_action_page.dart';
 import 'start_training_page.dart';
+import 'switch_action_dialog.dart';
 import 'today_summary_page.dart';
+import 'training_session_page.dart';
 import 'workout_models.dart';
 import 'workout_store.dart';
 import 'workout_theme.dart';
+
+const _countdownSoundChannel = MethodChannel('local_tasks/countdown_sound');
 
 enum _WorkoutStep {
   selectAction,
   startTraining,
   currentAction,
-  completeAction,
   rest,
   todaySummary,
   history,
 }
+
+enum _TrainingMenuAction { adjust, switchAction, addAction, savePartial }
 
 class WorkoutAssistantPage extends StatefulWidget {
   const WorkoutAssistantPage({super.key});
@@ -83,6 +85,19 @@ class _WorkoutAssistantPageState extends State<WorkoutAssistantPage> {
       sets: 3,
     ),
     QuickExerciseTemplate(
+      bodyPart: '胸',
+      name: '下斜哑铃卧推',
+      exerciseCoefficient: .20,
+      sets: 4,
+    ),
+    QuickExerciseTemplate(
+      bodyPart: '胸',
+      name: '绳索夹胸',
+      exerciseCoefficient: .22,
+      sets: 3,
+    ),
+    QuickExerciseTemplate.bodyweight(bodyPart: '胸', name: '窄距俯卧撑', sets: 3),
+    QuickExerciseTemplate(
       bodyPart: '背',
       name: '杠铃划船',
       exerciseCoefficient: .70,
@@ -114,6 +129,24 @@ class _WorkoutAssistantPageState extends State<WorkoutAssistantPage> {
       sets: 3,
     ),
     QuickExerciseTemplate(
+      bodyPart: '背',
+      name: 'T 杠划船',
+      exerciseCoefficient: .65,
+      sets: 4,
+    ),
+    QuickExerciseTemplate(
+      bodyPart: '背',
+      name: '哑铃上拉',
+      exerciseCoefficient: .20,
+      sets: 3,
+    ),
+    QuickExerciseTemplate(
+      bodyPart: '背',
+      name: '胸托划船',
+      exerciseCoefficient: .45,
+      sets: 3,
+    ),
+    QuickExerciseTemplate(
       bodyPart: '肩',
       name: '哑铃推肩',
       exerciseCoefficient: .20,
@@ -141,6 +174,24 @@ class _WorkoutAssistantPageState extends State<WorkoutAssistantPage> {
       bodyPart: '肩',
       name: '反向飞鸟',
       exerciseCoefficient: .08,
+      sets: 3,
+    ),
+    QuickExerciseTemplate(
+      bodyPart: '肩',
+      name: '阿诺德推举',
+      exerciseCoefficient: .18,
+      sets: 3,
+    ),
+    QuickExerciseTemplate(
+      bodyPart: '肩',
+      name: '哑铃前平举',
+      exerciseCoefficient: .08,
+      sets: 3,
+    ),
+    QuickExerciseTemplate(
+      bodyPart: '肩',
+      name: '单臂绳索侧平举',
+      exerciseCoefficient: .06,
       sets: 3,
     ),
     QuickExerciseTemplate(
@@ -186,6 +237,30 @@ class _WorkoutAssistantPageState extends State<WorkoutAssistantPage> {
       sets: 4,
     ),
     QuickExerciseTemplate(
+      bodyPart: '腿',
+      name: '杠铃臀推',
+      exerciseCoefficient: .85,
+      sets: 4,
+    ),
+    QuickExerciseTemplate(
+      bodyPart: '腿',
+      name: '哈克深蹲',
+      exerciseCoefficient: 1.15,
+      sets: 3,
+    ),
+    QuickExerciseTemplate(
+      bodyPart: '腿',
+      name: '行走弓步',
+      exerciseCoefficient: .22,
+      sets: 3,
+    ),
+    QuickExerciseTemplate(
+      bodyPart: '腿',
+      name: '坐姿提踵',
+      exerciseCoefficient: .55,
+      sets: 4,
+    ),
+    QuickExerciseTemplate(
       bodyPart: '手臂',
       name: '哑铃弯举',
       exerciseCoefficient: .17,
@@ -215,14 +290,41 @@ class _WorkoutAssistantPageState extends State<WorkoutAssistantPage> {
       exerciseCoefficient: .25,
       sets: 3,
     ),
+    QuickExerciseTemplate(
+      bodyPart: '手臂',
+      name: '上斜哑铃弯举',
+      exerciseCoefficient: .12,
+      sets: 3,
+    ),
+    QuickExerciseTemplate(
+      bodyPart: '手臂',
+      name: '牧师椅弯举',
+      exerciseCoefficient: .16,
+      sets: 3,
+    ),
+    QuickExerciseTemplate(
+      bodyPart: '手臂',
+      name: '绳索过顶臂屈伸',
+      exerciseCoefficient: .20,
+      sets: 3,
+    ),
     QuickExerciseTemplate.bodyweight(bodyPart: '核心', name: '平板支撑', sets: 3),
     QuickExerciseTemplate.bodyweight(bodyPart: '核心', name: '悬垂举腿', sets: 3),
     QuickExerciseTemplate.bodyweight(bodyPart: '核心', name: '俄罗斯转体', sets: 3),
     QuickExerciseTemplate.bodyweight(bodyPart: '核心', name: '登山跑', sets: 3),
+    QuickExerciseTemplate.bodyweight(bodyPart: '核心', name: '死虫式', sets: 3),
+    QuickExerciseTemplate.bodyweight(bodyPart: '核心', name: '侧平板支撑', sets: 3),
+    QuickExerciseTemplate.bodyweight(bodyPart: '核心', name: '仰卧卷腹', sets: 3),
     QuickExerciseTemplate(
       bodyPart: '核心',
       name: '绳索卷腹',
       exerciseCoefficient: .35,
+      sets: 3,
+    ),
+    QuickExerciseTemplate(
+      bodyPart: '核心',
+      name: '腹轮 rollout',
+      exerciseCoefficient: .08,
       sets: 3,
     ),
   ];
@@ -233,9 +335,9 @@ class _WorkoutAssistantPageState extends State<WorkoutAssistantPage> {
 
   final _store = WorkoutStore();
   late List<WorkoutExercise> _exercises = [
-    _estimatedExercise('杠铃卧推', .85, 4, 12),
-    _estimatedExercise('杠铃深蹲', 1.10, 4, 10),
-    _estimatedExercise('哑铃弯举', .17, 3, 12),
+    _estimatedExercise('杠铃卧推', .85, 4, 12, bodyPart: '胸'),
+    _estimatedExercise('杠铃深蹲', 1.10, 4, 10, bodyPart: '腿'),
+    _estimatedExercise('哑铃弯举', .17, 3, 12, bodyPart: '手臂'),
   ];
   final _history = <WorkoutHistoryRecord>[];
   final _flowScrollController = ScrollController();
@@ -247,7 +349,10 @@ class _WorkoutAssistantPageState extends State<WorkoutAssistantPage> {
   int _activeIndex = 0;
   bool _soundEnabled = true;
   bool _historyRecorded = false;
+  bool _partialSessionSaved = false;
   DateTime? _trainingStartedAt;
+  _WorkoutStep _historyReturnStep = _WorkoutStep.todaySummary;
+  String? _selectedBodyPart = '胸';
 
   @override
   void initState() {
@@ -269,6 +374,11 @@ class _WorkoutAssistantPageState extends State<WorkoutAssistantPage> {
       }
       if (stored.exercises.isNotEmpty) {
         _exercises = stored.exercises;
+        for (final exercise in _exercises) {
+          if (!exercise.isBodyweight && exercise.weight <= 0) {
+            exercise.weightPending = true;
+          }
+        }
       }
       _history
         ..clear()
@@ -291,8 +401,9 @@ class _WorkoutAssistantPageState extends State<WorkoutAssistantPage> {
     String name,
     double coefficient,
     int sets,
-    int reps,
-  ) {
+    int reps, {
+    required String bodyPart,
+  }) {
     final profile = _profile;
     final estimatedWeight =
         profile == null
@@ -306,6 +417,7 @@ class _WorkoutAssistantPageState extends State<WorkoutAssistantPage> {
       weight: estimatedWeight ?? 0,
       sets: sets,
       reps: reps,
+      bodyPart: bodyPart,
       weightPending: estimatedWeight == null,
       estimateCoefficient: coefficient,
     );
@@ -320,7 +432,10 @@ class _WorkoutAssistantPageState extends State<WorkoutAssistantPage> {
       _experience = profile.experience;
       for (final exercise in _exercises) {
         final coefficient = exercise.estimateCoefficient;
-        if (!exercise.weightPending || coefficient == null) continue;
+        if (coefficient == null ||
+            (!exercise.weightPending && exercise.weight > 0)) {
+          continue;
+        }
         exercise.weight = TrainingWeightEstimator.estimateKg(
           profile: profile,
           exerciseCoefficient: coefficient,
@@ -380,11 +495,17 @@ class _WorkoutAssistantPageState extends State<WorkoutAssistantPage> {
   }
 
   void _transitionTo(_WorkoutStep step, {VoidCallback? update}) {
+    final wasInTrainingSession =
+        _step == _WorkoutStep.currentAction || _step == _WorkoutStep.rest;
+    final willStayInTrainingSession =
+        step == _WorkoutStep.currentAction || step == _WorkoutStep.rest;
     setState(() {
       update?.call();
       _step = step;
     });
-    _animateFlowToTop();
+    if (!(wasInTrainingSession && willStayInTrainingSession)) {
+      _animateFlowToTop();
+    }
   }
 
   void _toggleSound() => setState(() => _soundEnabled = !_soundEnabled);
@@ -399,7 +520,18 @@ class _WorkoutAssistantPageState extends State<WorkoutAssistantPage> {
       (item) => item.name == quick.name,
     );
     if (existingIndex >= 0) {
-      setState(() => _exercises[existingIndex].selected = true);
+      setState(() {
+        final existing = _exercises[existingIndex];
+        existing.selected = true;
+        if (!quick.isBodyweight && existing.weight <= 0) {
+          if (quick.weightKg == null) {
+            existing.weightPending = true;
+          } else {
+            existing.weight = quick.weightKg!;
+            existing.weightPending = false;
+          }
+        }
+      });
       unawaited(_persistWorkout());
       return;
     }
@@ -411,6 +543,7 @@ class _WorkoutAssistantPageState extends State<WorkoutAssistantPage> {
           weight: quick.weightKg ?? 0,
           sets: quick.sets,
           reps: 12,
+          bodyPart: quick.bodyPart,
           isBodyweight: quick.isBodyweight,
           weightPending: quick.weightKg == null && !quick.isBodyweight,
           estimateCoefficient: quick.exerciseCoefficient,
@@ -467,6 +600,19 @@ class _WorkoutAssistantPageState extends State<WorkoutAssistantPage> {
 
   void _startTrainingPreparation() {
     if (_selectedExercises.isEmpty) return;
+    final pending =
+        _selectedExercises
+            .where(
+              (exercise) => !exercise.isBodyweight && exercise.weightPending,
+            )
+            .toList();
+    if (pending.isNotEmpty) {
+      final names = pending.map((exercise) => exercise.name).join('、');
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('$names 尚未设置训练重量，请先填写身体数据或调整重量。')));
+      return;
+    }
     _transitionTo(_WorkoutStep.startTraining);
   }
 
@@ -476,12 +622,11 @@ class _WorkoutAssistantPageState extends State<WorkoutAssistantPage> {
     _trainingStartedAt ??= DateTime.now();
     _transitionTo(
       _WorkoutStep.currentAction,
-      update: () => _activeIndex = first,
+      update: () {
+        _activeIndex = first;
+        _partialSessionSaved = false;
+      },
     );
-  }
-
-  void _openCompleteAction() {
-    _transitionTo(_WorkoutStep.completeAction, update: () => _currentRir = 2);
   }
 
   void _confirmCompletedSet() {
@@ -505,18 +650,29 @@ class _WorkoutAssistantPageState extends State<WorkoutAssistantPage> {
       if (!mounted || _restSeconds <= 0) return;
       final nextSeconds = _restSeconds - 1;
       setState(() => _restSeconds = nextSeconds);
-      if (_soundEnabled && nextSeconds <= 10) {
-        _playRestCountdownSound();
+      if (_soundEnabled && nextSeconds > 0 && nextSeconds <= 10) {
+        unawaited(_playRestCountdownSound());
       }
     });
   }
 
   Future<void> _playRestCountdownSound() async {
     try {
-      await SystemSound.play(SystemSoundType.click);
+      await _countdownSoundChannel.invokeMethod<void>('playCountdown');
     } catch (_) {
-      // Some platforms do not expose a system click sound.
+      // Android and unsupported platforms fall back to the system alert sound.
+      try {
+        await SystemSound.play(SystemSoundType.alert);
+        await HapticFeedback.mediumImpact();
+      } catch (_) {
+        // Some platforms do not expose a system alert sound.
+      }
     }
+  }
+
+  void _openHistory({required _WorkoutStep returnStep}) {
+    _historyReturnStep = returnStep;
+    _transitionTo(_WorkoutStep.history);
   }
 
   void _continueAfterRest() {
@@ -541,10 +697,11 @@ class _WorkoutAssistantPageState extends State<WorkoutAssistantPage> {
     }
 
     _recordHistory();
+    _partialSessionSaved = false;
     _transitionTo(_WorkoutStep.todaySummary);
   }
 
-  void _recordHistory() {
+  void _recordHistory({bool isPartial = false}) {
     if (_historyRecorded) return;
     _historyRecorded = true;
     for (final exercise in _selectedExercises) {
@@ -552,17 +709,92 @@ class _WorkoutAssistantPageState extends State<WorkoutAssistantPage> {
         exercise,
       );
     }
+    final historyExercises = [
+      for (final exercise in _selectedExercises)
+        if (!isPartial || exercise.completedSets > 0)
+          WorkoutHistoryExercise(
+            name: exercise.name,
+            weight: exercise.weight,
+            sets: exercise.sets,
+            reps: exercise.reps,
+            completedSets: exercise.completedSets,
+            restSeconds: exercise.restSeconds,
+            rirFeedback: [...exercise.rirFeedback],
+            isBodyweight: exercise.isBodyweight,
+          ),
+    ];
     _history.insert(
       0,
       WorkoutHistoryRecord(
         date: DateTime.now(),
-        exerciseCount: _selectedExercises.length,
+        exerciseCount:
+            isPartial
+                ? _selectedExercises
+                    .where((exercise) => exercise.completedSets > 0)
+                    .length
+                : _selectedExercises.length,
         completedSets: _completedSets,
         volume: _volume,
         duration: _trainingDuration,
+        exercises: historyExercises,
+        isPartial: isPartial,
       ),
     );
     unawaited(_persistWorkout());
+  }
+
+  Future<void> _switchAction() async {
+    final exercises = _selectedExercises;
+    if (exercises.isEmpty) return;
+    final selected = await showDialog<WorkoutExercise>(
+      context: context,
+      builder:
+          (_) => SwitchActionDialog(
+            exercises: exercises,
+            activeExercise: _activeExercise,
+          ),
+    );
+    if (!mounted || selected == null) return;
+    final index = _exercises.indexOf(selected);
+    if (index < 0) return;
+    _restClock?.cancel();
+    _transitionTo(
+      _WorkoutStep.currentAction,
+      update: () {
+        _activeIndex = index;
+        _restSeconds = 0;
+      },
+    );
+  }
+
+  void _savePartialTraining() {
+    if (_completedSets == 0) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('至少完成一组后，才能保存本次训练。')));
+      return;
+    }
+    _restClock?.cancel();
+    _recordHistory(isPartial: true);
+    setState(() {
+      _restSeconds = 0;
+      _partialSessionSaved = true;
+      _step = _WorkoutStep.todaySummary;
+    });
+    _animateFlowToTop();
+  }
+
+  void _handleTrainingMenu(_TrainingMenuAction action) {
+    switch (action) {
+      case _TrainingMenuAction.adjust:
+        unawaited(_adjustExercise(_activeExercise));
+      case _TrainingMenuAction.switchAction:
+        unawaited(_switchAction());
+      case _TrainingMenuAction.addAction:
+        unawaited(_addCustomExercise());
+      case _TrainingMenuAction.savePartial:
+        _savePartialTraining();
+    }
   }
 
   void _restartTraining() {
@@ -580,6 +812,7 @@ class _WorkoutAssistantPageState extends State<WorkoutAssistantPage> {
       _restSeconds = 0;
       _trainingStartedAt = null;
       _historyRecorded = false;
+      _partialSessionSaved = false;
       _step = _WorkoutStep.selectAction;
     });
     unawaited(_persistWorkout());
@@ -592,8 +825,6 @@ class _WorkoutAssistantPageState extends State<WorkoutAssistantPage> {
         _transitionTo(_WorkoutStep.selectAction);
       case _WorkoutStep.currentAction:
         _transitionTo(_WorkoutStep.startTraining);
-      case _WorkoutStep.completeAction:
-        _transitionTo(_WorkoutStep.currentAction);
       case _WorkoutStep.history:
         _transitionTo(_WorkoutStep.todaySummary);
       case _WorkoutStep.rest:
@@ -662,7 +893,6 @@ class _WorkoutAssistantPageState extends State<WorkoutAssistantPage> {
       _WorkoutStep.selectAction: '选择动作',
       _WorkoutStep.startTraining: '开始今日训练',
       _WorkoutStep.currentAction: '当前动作',
-      _WorkoutStep.completeAction: '完成动作',
       _WorkoutStep.rest: '组间休息',
       _WorkoutStep.todaySummary: '今日数据',
       _WorkoutStep.history: '历史数据',
@@ -670,9 +900,7 @@ class _WorkoutAssistantPageState extends State<WorkoutAssistantPage> {
     final stepIndex = _WorkoutStep.values.indexOf(_step);
     final showAssistantTitle = _step == _WorkoutStep.selectAction;
     final trainingActive = switch (_step) {
-      _WorkoutStep.currentAction ||
-      _WorkoutStep.completeAction ||
-      _WorkoutStep.rest => true,
+      _WorkoutStep.currentAction || _WorkoutStep.rest => true,
       _ => false,
     };
     return Container(
@@ -753,6 +981,35 @@ class _WorkoutAssistantPageState extends State<WorkoutAssistantPage> {
                   ),
                 ),
               ),
+            if (trainingActive)
+              PopupMenuButton<_TrainingMenuAction>(
+                tooltip: '训练中操作',
+                onSelected: _handleTrainingMenu,
+                icon: const Icon(
+                  Icons.more_horiz_rounded,
+                  color: WorkoutColors.muted,
+                ),
+                itemBuilder:
+                    (_) => const [
+                      PopupMenuItem(
+                        value: _TrainingMenuAction.adjust,
+                        child: Text('调整当前动作'),
+                      ),
+                      PopupMenuItem(
+                        value: _TrainingMenuAction.switchAction,
+                        child: Text('切换动作'),
+                      ),
+                      PopupMenuItem(
+                        value: _TrainingMenuAction.addAction,
+                        child: Text('添加动作'),
+                      ),
+                      PopupMenuDivider(),
+                      PopupMenuItem(
+                        value: _TrainingMenuAction.savePartial,
+                        child: Text('结束并保存本次训练'),
+                      ),
+                    ],
+              ),
             IconButton(
               tooltip: '训练提示音',
               onPressed: _toggleSound,
@@ -813,6 +1070,10 @@ class _WorkoutAssistantPageState extends State<WorkoutAssistantPage> {
           onAdjustExercise: _adjustExercise,
           onDeleteExercise: _deleteExercise,
           onStartTraining: _startTrainingPreparation,
+          onHistory: () => _openHistory(returnStep: _WorkoutStep.selectAction),
+          selectedBodyPart: _selectedBodyPart,
+          onBodyPartChanged:
+              (bodyPart) => setState(() => _selectedBodyPart = bodyPart),
         );
       case _WorkoutStep.startTraining:
         return StartTrainingPage(
@@ -822,44 +1083,39 @@ class _WorkoutAssistantPageState extends State<WorkoutAssistantPage> {
           onStart: _beginTraining,
         );
       case _WorkoutStep.currentAction:
-        return CurrentActionPage(
-          key: ValueKey(
-            'current-action-$_activeIndex-${_activeExercise.completedSets}',
-          ),
+      case _WorkoutStep.rest:
+        return TrainingSessionPage(
+          key: ValueKey('training-session-$_activeIndex'),
+          isResting: _step == _WorkoutStep.rest,
           exercise: _activeExercise,
           actionNumber: _activeActionNumber,
           totalActions: _selectedExercises.length,
-          onCompleteAction: _openCompleteAction,
-          onBack: () => _transitionTo(_WorkoutStep.startTraining),
-        );
-      case _WorkoutStep.completeAction:
-        return CompleteActionPage(
-          key: ValueKey(
-            'complete-action-$_activeIndex-${_activeExercise.completedSets}',
-          ),
-          exercise: _activeExercise,
-          rir: _currentRir,
-          onRirChanged: (value) => setState(() => _currentRir = value),
-          onConfirm: _confirmCompletedSet,
-          onBack: () => _transitionTo(_WorkoutStep.currentAction),
-        );
-      case _WorkoutStep.rest:
-        return RestPage(
-          key: ValueKey('rest-$_activeIndex-${_activeExercise.completedSets}'),
-          exercise: _activeExercise,
-          seconds: _restSeconds,
           isLastSet: _isLastSet,
           isLastAction: _isLastAction,
+          restSeconds: _restSeconds,
+          rir: _currentRir,
+          onRirChanged: (value) => setState(() => _currentRir = value),
+          onConfirmSet: _confirmCompletedSet,
           onContinue: _continueAfterRest,
           onSkip: _continueAfterRest,
+          onAdjust: () => unawaited(_adjustExercise(_activeExercise)),
+          onSwitchAction: () => unawaited(_switchAction()),
+          onAddAction: () => unawaited(_addCustomExercise()),
+          onBack: () => _transitionTo(_WorkoutStep.startTraining),
         );
       case _WorkoutStep.todaySummary:
         return TodaySummaryPage(
           key: const ValueKey('today-summary'),
-          exercises: _selectedExercises,
+          exercises:
+              _partialSessionSaved
+                  ? _selectedExercises
+                      .where((exercise) => exercise.completedSets > 0)
+                      .toList()
+                  : _selectedExercises,
           completedSets: _completedSets,
           volume: _volume,
           duration: _trainingDuration,
+          isPartial: _partialSessionSaved,
           onHistory: () => _transitionTo(_WorkoutStep.history),
           onRestart: _restartTraining,
         );
@@ -867,7 +1123,7 @@ class _WorkoutAssistantPageState extends State<WorkoutAssistantPage> {
         return HistoryPage(
           key: const ValueKey('history'),
           records: _history,
-          onBack: () => _transitionTo(_WorkoutStep.todaySummary),
+          onBack: () => _transitionTo(_historyReturnStep),
         );
     }
   }

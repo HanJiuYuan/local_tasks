@@ -83,6 +83,7 @@ class WorkoutExercise {
     required this.weight,
     required this.sets,
     required this.reps,
+    this.bodyPart = '其他',
     this.restSeconds = 90,
     this.selected = true,
     this.isBodyweight = false,
@@ -98,6 +99,7 @@ class WorkoutExercise {
   double weight;
   int sets;
   int reps;
+  String bodyPart;
   int restSeconds;
   int completedSets = 0;
   bool selected;
@@ -125,7 +127,7 @@ class WorkoutExercise {
       isBodyweight
           ? '自重'
           : weightPending
-          ? '待估算'
+          ? '待设置'
           : weight == weight.roundToDouble()
           ? '${weight.toInt()} kg'
           : '${weight.toStringAsFixed(1)} kg';
@@ -185,7 +187,7 @@ class QuickExercise {
   String get weightLabel {
     if (isBodyweight) return '自重';
     final weight = weightKg;
-    if (weight == null) return '待估算';
+    if (weight == null) return '待设置';
     return weight == weight.roundToDouble()
         ? '${weight.toInt()}kg'
         : '${weight.toStringAsFixed(1)}kg';
@@ -246,6 +248,8 @@ class WorkoutHistoryRecord {
     required this.completedSets,
     required this.volume,
     required this.duration,
+    this.exercises = const [],
+    this.isPartial = false,
   });
 
   final DateTime date;
@@ -253,4 +257,40 @@ class WorkoutHistoryRecord {
   final int completedSets;
   final double volume;
   final Duration duration;
+  final List<WorkoutHistoryExercise> exercises;
+  final bool isPartial;
+}
+
+class WorkoutHistoryExercise {
+  const WorkoutHistoryExercise({
+    required this.name,
+    required this.weight,
+    required this.sets,
+    required this.reps,
+    required this.completedSets,
+    required this.restSeconds,
+    required this.rirFeedback,
+    this.isBodyweight = false,
+  });
+
+  final String name;
+  final double weight;
+  final int sets;
+  final int reps;
+  final int completedSets;
+  final int restSeconds;
+  final List<int> rirFeedback;
+  final bool isBodyweight;
+
+  double? get averageRir {
+    if (rirFeedback.isEmpty) return null;
+    return rirFeedback.reduce((total, rir) => total + rir) / rirFeedback.length;
+  }
+
+  String get weightLabel {
+    if (isBodyweight) return '自重';
+    return weight == weight.roundToDouble()
+        ? '${weight.toInt()} kg'
+        : '${weight.toStringAsFixed(1)} kg';
+  }
 }

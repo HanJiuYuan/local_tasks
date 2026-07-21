@@ -63,6 +63,7 @@ class _AdjustExerciseDialogState extends State<AdjustExerciseDialog> {
         reps == null ||
         sets < 1 ||
         reps < 1 ||
+        (!widget.exercise.isBodyweight && weight <= 0) ||
         (firstTestWeight == null) != (firstTestReps == null) ||
         (firstTestWeight != null &&
             (firstTestWeight <= 0 ||
@@ -79,6 +80,7 @@ class _AdjustExerciseDialogState extends State<AdjustExerciseDialog> {
         weight: weight,
         sets: sets,
         reps: reps,
+        bodyPart: widget.exercise.bodyPart,
         restSeconds: _restSeconds,
         selected: widget.exercise.selected,
         isBodyweight: widget.exercise.isBodyweight,
