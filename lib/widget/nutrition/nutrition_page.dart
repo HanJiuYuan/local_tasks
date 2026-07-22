@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../workout/workout_theme.dart';
 import 'add_food_dialog.dart';
+import 'nutrition_history_page.dart';
 import 'nutrition_models.dart';
 import 'nutrition_store.dart';
 
@@ -11,21 +12,39 @@ class NutritionPage extends StatefulWidget {
   State<NutritionPage> createState() => _NutritionPageState();
 }
 
-class _NutritionPageState extends State<NutritionPage> {
+class _NutritionPageState extends State<NutritionPage>
+    with WidgetsBindingObserver {
   final _store = NutritionStore();
-  late Future<void> _loadFuture;
+  var _today = _nutritionDayStart(DateTime.now());
   var _entries = <FoodEntry>[];
+  var _showMoreNutrition = false;
 
   @override
   void initState() {
     super.initState();
-    _loadFuture = _loadEntries();
+    WidgetsBinding.instance.addObserver(this);
+    _loadEntries();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _loadEntries();
   }
 
   Future<void> _loadEntries() async {
-    final entries = await _store.loadForDate(DateTime.now());
+    final today = _nutritionDayStart(DateTime.now());
+    final entries = await _store.loadForDate(today);
     if (!mounted) return;
-    setState(() => _entries = entries);
+    setState(() {
+      _today = today;
+      _entries = entries;
+    });
   }
 
   NutritionTotals get _totals => NutritionTotals.fromEntries(_entries);
@@ -36,11 +55,15 @@ class _NutritionPageState extends State<NutritionPage> {
       builder: (_) => AddFoodDialog(initialMeal: meal),
     );
     if (!mounted || entry == null) return;
-    await _loadFuture;
+    await _store.insert(entry);
     if (!mounted) return;
-    final id = await _store.insert(entry);
-    if (!mounted) return;
-    setState(() => _entries = [..._entries, entry.copyWith(id: id)]);
+    await _loadEntries();
+  }
+
+  void _openHistory() {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => NutritionHistoryPage(store: _store)),
+    );
   }
 
   Future<void> _removeFood(FoodEntry entry) async {
@@ -77,7 +100,7 @@ class _NutritionPageState extends State<NutritionPage> {
   }
 
   Widget _header() {
-    final now = DateTime.now();
+    final now = _today;
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
@@ -121,6 +144,12 @@ class _NutritionPageState extends State<NutritionPage> {
             ],
           ),
         ),
+        IconButton(
+          tooltip: '查看历史记录',
+          onPressed: _openHistory,
+          icon: const Icon(Icons.history_rounded, color: WorkoutColors.muted),
+        ),
+        const SizedBox(width: 2),
         FilledButton.icon(
           onPressed: _addFood,
           style: FilledButton.styleFrom(
@@ -223,8 +252,68 @@ class _NutritionPageState extends State<NutritionPage> {
               );
             },
           ),
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              key: const ValueKey('more-nutrition-button'),
+              onPressed: () {
+                setState(() => _showMoreNutrition = !_showMoreNutrition);
+              },
+              style: TextButton.styleFrom(
+                foregroundColor: WorkoutColors.muted,
+                padding: EdgeInsets.zero,
+                minimumSize: const Size(0, 32),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              icon: Icon(
+                _showMoreNutrition
+                    ? Icons.keyboard_arrow_up_rounded
+                    : Icons.keyboard_arrow_down_rounded,
+                size: 18,
+              ),
+              label: Text(
+                _showMoreNutrition ? '收起更多营养数据' : '更多营养数据',
+                style: const TextStyle(fontSize: 12),
+              ),
+            ),
+          ),
+          if (_showMoreNutrition) ...[
+            const SizedBox(height: 4),
+            _extraNutritionCards(totals),
+          ],
         ],
       ),
+    );
+  }
+
+  Widget _extraNutritionCards(NutritionTotals totals) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        const gap = 8.0;
+        final width = (constraints.maxWidth - gap * 2) / 3;
+        return Wrap(
+          spacing: gap,
+          runSpacing: gap,
+          children: [
+            _macroCard(
+              '膳食纤维',
+              totals.fiber,
+              'g',
+              const Color(0xFF8A72E8),
+              width,
+            ),
+            _macroCard('糖分', totals.sugar, 'g', const Color(0xFFF078A5), width),
+            _macroCard(
+              '钠',
+              totals.sodium,
+              'mg',
+              const Color(0xFF5A8DEE),
+              width,
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -343,6 +432,8 @@ class _NutritionPageState extends State<NutritionPage> {
   }
 
   Widget _foodTile(FoodEntry entry) {
+    final amountLabel =
+        entry.grams > 0 ? '${_formatNumber(entry.grams)}g' : '本次摄入';
     return Container(
       margin: const EdgeInsets.only(top: 7),
       padding: const EdgeInsets.fromLTRB(10, 9, 5, 9),
@@ -367,7 +458,7 @@ class _NutritionPageState extends State<NutritionPage> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  '${_formatNumber(entry.grams)}g  ·  '
+                  '$amountLabel  ·  '
                   '蛋白质 ${_formatNumber(entry.protein)}g  ·  '
                   '碳水 ${_formatNumber(entry.carbs)}g  ·  '
                   '脂肪 ${_formatNumber(entry.fat)}g',
@@ -415,3 +506,6 @@ class _NutritionPageState extends State<NutritionPage> {
           ? value.toInt().toString()
           : value.toStringAsFixed(1);
 }
+
+DateTime _nutritionDayStart(DateTime date) =>
+    DateTime(date.year, date.month, date.day);

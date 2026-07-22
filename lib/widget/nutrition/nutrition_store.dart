@@ -21,7 +21,7 @@ class NutritionStore {
     final databasePath = await _databasePath();
     final opened = await openDatabase(
       databasePath,
-      version: 1,
+      version: 2,
       onCreate: (database, _) async {
         await database.execute('''
 CREATE TABLE food_entries (
@@ -33,6 +33,9 @@ CREATE TABLE food_entries (
   protein REAL NOT NULL,
   carbs REAL NOT NULL,
   fat REAL NOT NULL,
+  fiber REAL NOT NULL DEFAULT 0,
+  sugar REAL NOT NULL DEFAULT 0,
+  sodium REAL NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL
 )
 ''');
@@ -40,6 +43,22 @@ CREATE TABLE food_entries (
           'CREATE INDEX idx_food_entries_created_at '
           'ON food_entries(created_at)',
         );
+      },
+      onUpgrade: (database, oldVersion, newVersion) async {
+        if (oldVersion < 2) {
+          await database.execute(
+            'ALTER TABLE food_entries ADD COLUMN '
+            'fiber REAL NOT NULL DEFAULT 0',
+          );
+          await database.execute(
+            'ALTER TABLE food_entries ADD COLUMN '
+            'sugar REAL NOT NULL DEFAULT 0',
+          );
+          await database.execute(
+            'ALTER TABLE food_entries ADD COLUMN '
+            'sodium REAL NOT NULL DEFAULT 0',
+          );
+        }
       },
     );
     _sharedDatabase = opened;
@@ -56,9 +75,8 @@ CREATE TABLE food_entries (
   }
 
   Future<List<FoodEntry>> loadForDate(DateTime date) async {
+    final (start, end) = _dayBounds(date);
     if (_isFlutterTest) {
-      final start = DateTime(date.year, date.month, date.day);
-      final end = start.add(const Duration(days: 1));
       return _testEntries
           .where(
             (entry) =>
@@ -68,13 +86,32 @@ CREATE TABLE food_entries (
           .toList();
     }
     final database = await _db;
-    final start = DateTime(date.year, date.month, date.day);
-    final end = start.add(const Duration(days: 1));
     final rows = await database.query(
       'food_entries',
       where: 'created_at >= ? AND created_at < ?',
       whereArgs: [start.millisecondsSinceEpoch, end.millisecondsSinceEpoch],
       orderBy: 'created_at ASC, id ASC',
+    );
+    return rows.map(_fromRow).toList();
+  }
+
+  /// Loads records before [before]'s local calendar day for the history view.
+  Future<List<FoodEntry>> loadHistory({DateTime? before}) async {
+    final cutoff = _dayBounds(before ?? DateTime.now()).$1;
+    if (_isFlutterTest) {
+      final entries =
+          _testEntries
+              .where((entry) => entry.createdAt.isBefore(cutoff))
+              .toList();
+      entries.sort(_compareNewestFirst);
+      return entries;
+    }
+    final database = await _db;
+    final rows = await database.query(
+      'food_entries',
+      where: 'created_at < ?',
+      whereArgs: [cutoff.millisecondsSinceEpoch],
+      orderBy: 'created_at DESC, id DESC',
     );
     return rows.map(_fromRow).toList();
   }
@@ -112,19 +149,31 @@ CREATE TABLE food_entries (
   FoodEntry _fromRow(Map<String, Object?> row) {
     final mealIndex = row['meal'] as int? ?? 0;
     final safeMealIndex = mealIndex.clamp(0, MealType.values.length - 1);
+    final name = row['name'] as String? ?? '';
+    final grams = (row['grams'] as num?)?.toDouble() ?? 0;
+    final calculatedExtras = FoodDatabase.find(name)?.calculate(grams);
     return FoodEntry(
       id: row['id'] as int?,
-      name: row['name'] as String? ?? '',
+      name: name,
       meal: MealType.values[safeMealIndex],
-      grams: (row['grams'] as num?)?.toDouble() ?? 0,
+      grams: grams,
       calories: (row['calories'] as num?)?.toDouble() ?? 0,
       protein: (row['protein'] as num?)?.toDouble() ?? 0,
       carbs: (row['carbs'] as num?)?.toDouble() ?? 0,
       fat: (row['fat'] as num?)?.toDouble() ?? 0,
+      fiber: _storedOrCalculated(row['fiber'], calculatedExtras?.fiber),
+      sugar: _storedOrCalculated(row['sugar'], calculatedExtras?.sugar),
+      sodium: _storedOrCalculated(row['sodium'], calculatedExtras?.sodium),
       createdAt: DateTime.fromMillisecondsSinceEpoch(
         (row['created_at'] as num?)?.toInt() ?? 0,
       ),
     );
+  }
+
+  double _storedOrCalculated(Object? stored, double? calculated) {
+    final value = (stored as num?)?.toDouble();
+    if (value != null && value > 0) return value;
+    return calculated ?? 0;
   }
 
   Map<String, Object?> _toRow(FoodEntry entry) {
@@ -136,7 +185,21 @@ CREATE TABLE food_entries (
       'protein': entry.protein,
       'carbs': entry.carbs,
       'fat': entry.fat,
+      'fiber': entry.fiber,
+      'sugar': entry.sugar,
+      'sodium': entry.sodium,
       'created_at': entry.createdAt.millisecondsSinceEpoch,
     };
+  }
+
+  (DateTime, DateTime) _dayBounds(DateTime date) {
+    final start = DateTime(date.year, date.month, date.day);
+    return (start, start.add(const Duration(days: 1)));
+  }
+
+  int _compareNewestFirst(FoodEntry a, FoodEntry b) {
+    final dateComparison = b.createdAt.compareTo(a.createdAt);
+    if (dateComparison != 0) return dateComparison;
+    return (b.id ?? 0).compareTo(a.id ?? 0);
   }
 }
