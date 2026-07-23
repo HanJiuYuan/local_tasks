@@ -9,6 +9,7 @@ class NutritionStore {
   static Database? _sharedDatabase;
   static final _testEntries = <FoodEntry>[];
   static var _testNextId = 1;
+  static NutritionGoal _testGoal = NutritionGoal.fatLoss;
   Database? _database;
 
   static bool get _isFlutterTest =>
@@ -21,7 +22,7 @@ class NutritionStore {
     final databasePath = await _databasePath();
     final opened = await openDatabase(
       databasePath,
-      version: 2,
+      version: 4,
       onCreate: (database, _) async {
         await database.execute('''
 CREATE TABLE food_entries (
@@ -36,6 +37,13 @@ CREATE TABLE food_entries (
   fiber REAL NOT NULL DEFAULT 0,
   sugar REAL NOT NULL DEFAULT 0,
   sodium REAL NOT NULL DEFAULT 0,
+  calories_per_100g REAL,
+  protein_per_100g REAL,
+  carbs_per_100g REAL,
+  fat_per_100g REAL,
+  fiber_per_100g REAL,
+  sugar_per_100g REAL,
+  sodium_per_100g REAL,
   created_at INTEGER NOT NULL
 )
 ''');
@@ -43,6 +51,12 @@ CREATE TABLE food_entries (
           'CREATE INDEX idx_food_entries_created_at '
           'ON food_entries(created_at)',
         );
+        await database.execute('''
+CREATE TABLE nutrition_settings (
+  id INTEGER PRIMARY KEY,
+  goal INTEGER NOT NULL
+)
+''');
       },
       onUpgrade: (database, oldVersion, newVersion) async {
         if (oldVersion < 2) {
@@ -58,6 +72,29 @@ CREATE TABLE food_entries (
             'ALTER TABLE food_entries ADD COLUMN '
             'sodium REAL NOT NULL DEFAULT 0',
           );
+        }
+        if (oldVersion < 3) {
+          for (final column in const [
+            'calories_per_100g REAL',
+            'protein_per_100g REAL',
+            'carbs_per_100g REAL',
+            'fat_per_100g REAL',
+            'fiber_per_100g REAL',
+            'sugar_per_100g REAL',
+            'sodium_per_100g REAL',
+          ]) {
+            await database.execute(
+              'ALTER TABLE food_entries ADD COLUMN $column',
+            );
+          }
+        }
+        if (oldVersion < 4) {
+          await database.execute('''
+CREATE TABLE IF NOT EXISTS nutrition_settings (
+  id INTEGER PRIMARY KEY,
+  goal INTEGER NOT NULL
+)
+''');
         }
       },
     );
@@ -126,6 +163,34 @@ CREATE TABLE food_entries (
     return database.insert('food_entries', _toRow(entry));
   }
 
+  Future<NutritionGoal> loadGoal() async {
+    if (_isFlutterTest) return _testGoal;
+    final database = await _db;
+    final rows = await database.query(
+      'nutrition_settings',
+      where: 'id = 1',
+      limit: 1,
+    );
+    if (rows.isEmpty) return NutritionGoal.fatLoss;
+    final index = (rows.first['goal'] as int? ?? 0).clamp(
+      0,
+      NutritionGoal.values.length - 1,
+    );
+    return NutritionGoal.values[index];
+  }
+
+  Future<void> saveGoal(NutritionGoal goal) async {
+    if (_isFlutterTest) {
+      _testGoal = goal;
+      return;
+    }
+    final database = await _db;
+    await database.insert('nutrition_settings', {
+      'id': 1,
+      'goal': goal.index,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
   Future<void> delete(int? id) async {
     if (id == null) return;
     if (_isFlutterTest) {
@@ -140,6 +205,7 @@ CREATE TABLE food_entries (
     if (_isFlutterTest) {
       _testEntries.clear();
       _testNextId = 1;
+      _testGoal = NutritionGoal.fatLoss;
       return;
     }
     final database = await _db;
@@ -152,6 +218,7 @@ CREATE TABLE food_entries (
     final name = row['name'] as String? ?? '';
     final grams = (row['grams'] as num?)?.toDouble() ?? 0;
     final calculatedExtras = FoodDatabase.find(name)?.calculate(grams);
+    final sourceNutrition = _nutritionFromRow(row);
     return FoodEntry(
       id: row['id'] as int?,
       name: name,
@@ -164,6 +231,7 @@ CREATE TABLE food_entries (
       fiber: _storedOrCalculated(row['fiber'], calculatedExtras?.fiber),
       sugar: _storedOrCalculated(row['sugar'], calculatedExtras?.sugar),
       sodium: _storedOrCalculated(row['sodium'], calculatedExtras?.sodium),
+      nutritionPer100g: sourceNutrition,
       createdAt: DateTime.fromMillisecondsSinceEpoch(
         (row['created_at'] as num?)?.toInt() ?? 0,
       ),
@@ -177,6 +245,7 @@ CREATE TABLE food_entries (
   }
 
   Map<String, Object?> _toRow(FoodEntry entry) {
+    final source = entry.nutritionPer100g;
     return {
       'name': entry.name,
       'meal': entry.meal.index,
@@ -188,8 +257,29 @@ CREATE TABLE food_entries (
       'fiber': entry.fiber,
       'sugar': entry.sugar,
       'sodium': entry.sodium,
+      'calories_per_100g': source?.calories,
+      'protein_per_100g': source?.protein,
+      'carbs_per_100g': source?.carbs,
+      'fat_per_100g': source?.fat,
+      'fiber_per_100g': source?.fiber,
+      'sugar_per_100g': source?.sugar,
+      'sodium_per_100g': source?.sodium,
       'created_at': entry.createdAt.millisecondsSinceEpoch,
     };
+  }
+
+  Nutrition? _nutritionFromRow(Map<String, Object?> row) {
+    final calories = (row['calories_per_100g'] as num?)?.toDouble();
+    if (calories == null) return null;
+    return Nutrition(
+      calories: calories,
+      protein: (row['protein_per_100g'] as num?)?.toDouble() ?? 0,
+      carbs: (row['carbs_per_100g'] as num?)?.toDouble() ?? 0,
+      fat: (row['fat_per_100g'] as num?)?.toDouble() ?? 0,
+      fiber: (row['fiber_per_100g'] as num?)?.toDouble() ?? 0,
+      sugar: (row['sugar_per_100g'] as num?)?.toDouble() ?? 0,
+      sodium: (row['sodium_per_100g'] as num?)?.toDouble() ?? 0,
+    );
   }
 
   (DateTime, DateTime) _dayBounds(DateTime date) {

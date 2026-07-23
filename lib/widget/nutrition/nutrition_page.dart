@@ -1,5 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../workout/workout_theme.dart';
+import '../workout/workout_models.dart';
+import '../workout/workout_store.dart';
 import 'add_food_dialog.dart';
 import 'nutrition_history_page.dart';
 import 'nutrition_models.dart';
@@ -15,8 +19,11 @@ class NutritionPage extends StatefulWidget {
 class _NutritionPageState extends State<NutritionPage>
     with WidgetsBindingObserver {
   final _store = NutritionStore();
+  final _workoutStore = WorkoutStore();
   var _today = _nutritionDayStart(DateTime.now());
   var _entries = <FoodEntry>[];
+  NutritionGoal _goal = NutritionGoal.fatLoss;
+  TrainingProfile? _profile;
   var _showMoreNutrition = false;
 
   @override
@@ -39,15 +46,30 @@ class _NutritionPageState extends State<NutritionPage>
 
   Future<void> _loadEntries() async {
     final today = _nutritionDayStart(DateTime.now());
-    final entries = await _store.loadForDate(today);
+    final results = await Future.wait([
+      _store.loadForDate(today),
+      _store.loadGoal(),
+      _workoutStore.load(),
+    ]);
+    final entries = results[0] as List<FoodEntry>;
+    final goal = results[1] as NutritionGoal;
+    final workoutState = results[2] as WorkoutStoredState?;
     if (!mounted) return;
     setState(() {
       _today = today;
       _entries = entries;
+      _goal = goal;
+      _profile = workoutState?.profile;
     });
   }
 
   NutritionTotals get _totals => NutritionTotals.fromEntries(_entries);
+
+  DailyNutritionTarget? get _target {
+    final profile = _profile;
+    if (profile == null) return null;
+    return DailyNutritionCalculator.calculate(profile: profile, goal: _goal);
+  }
 
   Future<void> _addFood({MealType meal = MealType.breakfast}) async {
     final entry = await showDialog<FoodEntry>(
@@ -70,6 +92,12 @@ class _NutritionPageState extends State<NutritionPage>
     await _store.delete(entry.id);
     if (!mounted) return;
     setState(() => _entries = _entries.where((item) => item != entry).toList());
+  }
+
+  void _changeGoal(NutritionGoal goal) {
+    if (_goal == goal) return;
+    setState(() => _goal = goal);
+    unawaited(_store.saveGoal(goal));
   }
 
   @override
@@ -282,6 +310,161 @@ class _NutritionPageState extends State<NutritionPage>
             const SizedBox(height: 4),
             _extraNutritionCards(totals),
           ],
+          const SizedBox(height: 14),
+          _dailyTargetSection(totals),
+        ],
+      ),
+    );
+  }
+
+  Widget _dailyTargetSection(NutritionTotals totals) {
+    final target = _target;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 11),
+      decoration: BoxDecoration(
+        color: WorkoutColors.background,
+        borderRadius: BorderRadius.circular(11),
+        border: Border.all(color: WorkoutColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  '每日目标',
+                  style: TextStyle(
+                    color: WorkoutColors.text,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              if (target != null)
+                Text(
+                  '${_formatNumber(target.calories)} kcal',
+                  style: const TextStyle(
+                    color: WorkoutColors.green,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              for (final goal in NutritionGoal.values)
+                ChoiceChip(
+                  label: Text(goal.label),
+                  selected: goal == _goal,
+                  onSelected: (_) => _changeGoal(goal),
+                  selectedColor: WorkoutColors.greenDark,
+                  backgroundColor: WorkoutColors.panel,
+                  side: BorderSide(
+                    color:
+                        goal == _goal
+                            ? WorkoutColors.green
+                            : WorkoutColors.border,
+                  ),
+                  labelStyle: TextStyle(
+                    color:
+                        goal == _goal
+                            ? WorkoutColors.text
+                            : WorkoutColors.muted,
+                    fontSize: 11,
+                  ),
+                  showCheckmark: false,
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          if (target == null)
+            const Text(
+              '请先在“健身助手”填写体重、体脂率和训练天数，App 才能计算每日目标。',
+              style: TextStyle(color: WorkoutColors.muted, fontSize: 11),
+            )
+          else ...[
+            Text(
+              '${_goal.description}。剩余 = 每日目标 - 今日已摄入',
+              style: const TextStyle(color: WorkoutColors.muted, fontSize: 11),
+            ),
+            const SizedBox(height: 9),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                const gap = 7.0;
+                final width = (constraints.maxWidth - gap * 3) / 4;
+                return Wrap(
+                  spacing: gap,
+                  runSpacing: gap,
+                  children: [
+                    _remainingCard(
+                      '热量',
+                      target.calories - totals.calories,
+                      'kcal',
+                      WorkoutColors.green,
+                      width,
+                    ),
+                    _remainingCard(
+                      '蛋白质',
+                      target.protein - totals.protein,
+                      'g',
+                      WorkoutColors.green,
+                      width,
+                    ),
+                    _remainingCard(
+                      '碳水',
+                      target.carbs - totals.carbs,
+                      'g',
+                      WorkoutColors.blue,
+                      width,
+                    ),
+                    _remainingCard(
+                      '脂肪',
+                      target.fat - totals.fat,
+                      'g',
+                      WorkoutColors.amber,
+                      width,
+                    ),
+                  ],
+                );
+              },
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _remainingCard(
+    String label,
+    double value,
+    String unit,
+    Color color,
+    double width,
+  ) {
+    return SizedBox(
+      width: width,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '剩余$label',
+            style: const TextStyle(color: WorkoutColors.muted, fontSize: 10),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            '${_formatNumber(value)} $unit',
+            style: TextStyle(
+              color: value < 0 ? const Color(0xFFFF8294) : color,
+              fontSize: 13,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
         ],
       ),
     );

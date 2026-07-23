@@ -28,17 +28,181 @@ LocalTasks is a local-first life-management app built with Flutter. It includes 
 
 - 按早餐、午餐、晚餐和加餐记录食物。
 - 提供主食、蛋白质、奶豆类、蔬菜、水果、坚果油脂和饮品分类。
-- 从内置常见食物库中选择食物，按照克数估算热量、蛋白质、碳水和脂肪。
-- 查看每日摄入总量和各餐记录，并支持删除记录。
-- 饮食记录持久化保存，重启应用后仍可恢复。
-- 营养值来自内置的每 100 克数据，属于估算值，不替代专业营养建议。
+- 从内置常见食物库中选择食物，按照每 100g 原始营养值和实际摄入克数计算热量、蛋白质、碳水、脂肪、膳食纤维、糖分和钠。
+- 复用健身助手中的体重、体脂率和训练天数，计算减脂、维持或增肌时的每日热量与三大营养素目标。
+- 查看今日已摄入、每日目标和实时剩余；超出目标时保留负数，不会把剩余值强制归零。
+- 支持自定义食物的“每 100g 营养值”和“本次摄入总量”两种录入方式。
+- 饮食记录和目标模式持久化保存，重启应用后仍可恢复。
+- 营养值来自内置或用户填写的数据，属于估算值，不替代专业营养建议。
 
 - Record breakfast, lunch, dinner, and snacks.
 - Browse staple foods, protein, dairy and soy, vegetables, fruits, nuts and oils, and beverages.
-- Select foods from the bundled food list and estimate calories, protein, carbohydrates, and fat from the entered weight.
-- View daily totals and meal entries, and delete entries when needed.
-- Nutrition entries are persisted and restored after the app restarts.
-- Nutrition values are bundled per-100-gram estimates and are not a substitute for professional dietary advice.
+- Select foods from the bundled food list and calculate calories, protein, carbohydrates, fat, fiber, sugar, and sodium from raw per-100-gram values and entered weight.
+- Reuse body weight, body-fat percentage, and training days from the workout profile to calculate daily targets for fat loss, maintenance, or muscle gain.
+- View consumed nutrition, daily targets, and live remaining values; over-target values remain negative instead of being clamped to zero.
+- Enter custom foods either as per-100-gram nutrition or as the total nutrition for one serving.
+- Nutrition entries and the selected goal are persisted and restored after the app restarts.
+- Nutrition values come from bundled or user-entered estimates and are not a substitute for professional dietary advice.
+
+## 营养算法 / Nutrition algorithm
+
+### 1. 数据来源与职责
+
+营养模块把“每日应该吃多少”和“今天实际吃了多少”分开计算：
+
+```text
+健身档案：体重 / 体脂率 / 身高 / 训练天数
+                         ↓
+每日目标：热量 / 蛋白质 / 脂肪 / 碳水
+
+食物记录：食物的每 100g 原始营养值 + 实际摄入克数
+                         ↓
+今日摄入：按日期汇总所有饮食记录
+                         ↓
+剩余营养：每日目标 - 今日已摄入
+```
+
+实现位置：
+
+- `Nutrition`：一组营养值，以及按重量换算的方法。
+- `FoodNutrition`：食物库中的每 100g 原始数据。
+- `FoodEntry`：用户的一条饮食记录，保存实际克数和每 100g 原始营养源。
+- `DailyNutritionCalculator`：每日目标计算器。
+- `NutritionTotals`：按日期汇总当天所有饮食记录。
+
+### 2. 每日营养目标
+
+当前产品策略使用 Katch-McArdle 类公式。体脂率在模型中以百分比保存，例如 `28` 代表 `28%`。
+
+#### 瘦体重
+
+```text
+LBM = 体重 × (1 - 体脂率 / 100)
+```
+
+示例：
+
+```text
+体重 77kg，体脂率 28%
+LBM = 77 × (1 - 0.28)
+    = 55.44kg
+```
+
+#### 静息代谢与 TDEE
+
+```text
+RMR  = 370 + 21.6 × LBM
+TDEE = RMR × 活动系数
+```
+
+活动系数是 App 的保守产品模型：
+
+```dart
+double activityFactor(int trainingDays) {
+  if (trainingDays <= 0) return 1.20;
+  if (trainingDays <= 2) return 1.30;
+  if (trainingDays <= 4) return 1.40;
+  if (trainingDays <= 6) return 1.50;
+  return 1.55;
+}
+```
+
+目标热量调整：
+
+| 目标 | 目标热量 |
+| --- | --- |
+| 减脂 | `TDEE × 0.85` |
+| 维持 | `TDEE × 1.00` |
+| 增肌 | `TDEE × 1.08` |
+
+这些数值属于产品策略参数，集中放在 `NutritionStrategyConfig` 中，后续可以替换为远程配置，不应被视为医学标准。
+
+### 3. 三大营养素目标
+
+计算顺序是：先蛋白质，再脂肪，最后把剩余热量分配给碳水。
+
+```text
+减脂蛋白质 = LBM × 2.3g
+维持/增肌蛋白质 = 体重 × 1.6g
+
+脂肪热量 = 目标热量 × 25%
+脂肪克数 = 脂肪热量 / 9
+
+蛋白质热量 = 蛋白质克数 × 4
+碳水克数 = (目标热量 - 蛋白质热量 - 脂肪热量) / 4
+```
+
+因此理论上四个目标满足：
+
+```text
+目标热量 = 蛋白质 × 4 + 脂肪 × 9 + 碳水 × 4
+```
+
+计算过程保留浮点精度，界面显示时才进行四舍五入，避免因提前取整造成总热量不一致。
+
+### 4. 单份食物的摄入量
+
+所有营养项统一使用 `Nutrition.calculateByWeight()`：
+
+```text
+实际营养 = 每 100g 营养值 × 实际摄入克数 / 100
+```
+
+示例，某食物每 100g 为：
+
+```text
+热量 220 kcal，蛋白质 12g，碳水 20g，脂肪 10g
+```
+
+用户实际摄入 180g：
+
+```text
+热量   = 220 × 180 / 100 = 396 kcal
+蛋白质 = 12  × 180 / 100 = 21.6g
+碳水   = 20  × 180 / 100 = 36g
+脂肪   = 10  × 180 / 100 = 18g
+```
+
+数据库保存的是：
+
+```text
+实际摄入克数：180g
+每 100g 原始营养：220 kcal / 12g / 20g / 10g
+```
+
+这样如果用户把 180g 修改为 150g，可以重新计算，而不会基于旧的 396 kcal 累计误差。当前界面尚未提供编辑按钮；对于无法确定重量、直接填写“本次摄入总量”的自定义食物，记录会保留本次总量作为兼容例外。
+
+### 5. 每日汇总与剩余
+
+当天的早餐、午餐、加餐和晚餐记录都会参与汇总：
+
+```text
+今日热量   = Σ 每条记录的实际热量
+今日蛋白质 = Σ 每条记录的实际蛋白质
+今日碳水   = Σ 每条记录的实际碳水
+今日脂肪   = Σ 每条记录的实际脂肪
+```
+
+剩余值只在运行时计算，不单独保存到数据库：
+
+```text
+剩余热量   = 每日热量目标 - 今日热量
+剩余蛋白质 = 每日蛋白质目标 - 今日蛋白质
+剩余碳水   = 每日碳水目标 - 今日碳水
+剩余脂肪   = 每日脂肪目标 - 今日脂肪
+```
+
+剩余值允许为负数。例如目标为 `1900 kcal`、实际摄入 `2050 kcal` 时，界面显示 `-150 kcal`，表示今日已超出 150 kcal。
+
+### 6. 本地存储
+
+营养数据保存在 `nutrition.db`：
+
+- `food_entries`：餐次、食物名称、实际克数、实际营养值、每 100g 原始营养字段和记录时间。
+- `nutrition_settings`：当前目标模式（减脂、维持或增肌）。
+- 数据库版本升级会为已有安装增加每 100g 原始营养字段；旧记录没有原始源时仍使用已保存的历史实际值。
+
+每日目标所需的身体数据继续来自 `workout.db` 中的健身档案，营养页打开或恢复时重新读取，目标模式单独保存在 `nutrition.db`。
 
 ### 出发检查 / Departure checklist
 
@@ -145,14 +309,14 @@ English: Run `flutter analyze` to check the code, `flutter test` to run tests, a
 - 应用使用底部导航在四个模块之间切换，并按需创建页面。
 - 各模块使用本地 SQLite 数据库保存业务数据，应用重启后会从数据库恢复状态。
 - 健身重量估算使用瘦体重、身高、训练天数和经验等级计算保守系数；填写首次测试重量和次数后，还会用估算的 1RM 对下一次建议重量进行上限约束。
-- 饮食营养计算按“每 100 克营养值 × 实际克数 / 100”进行。
+- 饮食目标由 `DailyNutritionCalculator` 根据健身档案计算，食物摄入由 `Nutrition.calculateByWeight()` 根据每 100g 原始数据计算，日汇总由 `NutritionTotals` 完成。
 
 English:
 
 - The app uses bottom navigation for the four modules and creates pages lazily when needed.
 - Each module stores its business data in local SQLite databases and restores its state after an app restart.
 - Workout weight estimation uses lean mass, height, training days, and experience to calculate a conservative factor. When a first-test weight and rep count are provided, an estimated one-rep max is used to cap the next recommendation.
-- Nutrition values are calculated as `per-100g value × entered grams / 100`.
+- Nutrition targets are calculated by `DailyNutritionCalculator` from the workout profile. Food intake is calculated by `Nutrition.calculateByWeight()` from raw per-100-gram data, and daily totals are produced by `NutritionTotals`.
 
 ## 当前限制与后续方向 / Current limitations and future directions
 

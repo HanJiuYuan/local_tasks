@@ -1,3 +1,5 @@
+import '../workout/workout_models.dart';
+
 enum FoodCategory {
   staple,
   protein,
@@ -51,28 +53,52 @@ class FoodEntry {
     required this.name,
     required this.meal,
     required this.grams,
-    required this.calories,
-    required this.protein,
-    required this.carbs,
-    required this.fat,
-    this.fiber = 0,
-    this.sugar = 0,
-    this.sodium = 0,
+    double? calories,
+    double? protein,
+    double? carbs,
+    double? fat,
+    double? fiber,
+    double? sugar,
+    double? sodium,
+    this.nutritionPer100g,
     DateTime? createdAt,
-  }) : createdAt = createdAt ?? DateTime.now();
+  }) : _legacyNutrition = Nutrition(
+         calories: calories ?? 0,
+         protein: protein ?? 0,
+         carbs: carbs ?? 0,
+         fat: fat ?? 0,
+         fiber: fiber ?? 0,
+         sugar: sugar ?? 0,
+         sodium: sodium ?? 0,
+       ),
+       createdAt = createdAt ?? DateTime.now();
 
   final int? id;
   final String name;
   final MealType meal;
   final double grams;
-  final double calories;
-  final double protein;
-  final double carbs;
-  final double fat;
-  final double fiber;
-  final double sugar;
-  final double sodium;
+
+  /// The source nutrition label, always expressed per 100g when available.
+  ///
+  /// Custom entries recorded as a serving total do not have a meaningful
+  /// per-100g value, so they keep [nutrition] in [_legacyNutrition].
+  final Nutrition? nutritionPer100g;
+  final Nutrition _legacyNutrition;
   final DateTime createdAt;
+
+  /// Nutrition actually consumed for this entry.
+  Nutrition get nutrition =>
+      nutritionPer100g != null && grams > 0
+          ? nutritionPer100g!.calculateByWeight(grams)
+          : _legacyNutrition;
+
+  double get calories => nutrition.calories;
+  double get protein => nutrition.protein;
+  double get carbs => nutrition.carbs;
+  double get fat => nutrition.fat;
+  double get fiber => nutrition.fiber;
+  double get sugar => nutrition.sugar;
+  double get sodium => nutrition.sodium;
 
   FoodEntry copyWith({int? id}) {
     return FoodEntry(
@@ -87,20 +113,21 @@ class FoodEntry {
       fiber: fiber,
       sugar: sugar,
       sodium: sodium,
+      nutritionPer100g: nutritionPer100g,
       createdAt: createdAt,
     );
   }
 }
 
-class NutritionValues {
-  const NutritionValues({
+class Nutrition {
+  const Nutrition({
     required this.calories,
     required this.protein,
     required this.carbs,
     required this.fat,
-    required this.fiber,
-    required this.sugar,
-    required this.sodium,
+    this.fiber = 0,
+    this.sugar = 0,
+    this.sodium = 0,
   });
 
   final double calories;
@@ -110,7 +137,22 @@ class NutritionValues {
   final double fiber;
   final double sugar;
   final double sodium;
+
+  Nutrition calculateByWeight(double grams) {
+    final ratio = grams / 100.0;
+    return Nutrition(
+      calories: calories * ratio,
+      protein: protein * ratio,
+      carbs: carbs * ratio,
+      fat: fat * ratio,
+      fiber: fiber * ratio,
+      sugar: sugar * ratio,
+      sodium: sodium * ratio,
+    );
+  }
 }
+
+typedef NutritionValues = Nutrition;
 
 class FoodNutrition {
   const FoodNutrition({
@@ -135,19 +177,21 @@ class FoodNutrition {
   final double? sugarPer100g;
   final double? sodiumPer100g;
 
-  NutritionValues calculate(double grams) {
-    final ratio = grams / 100;
+  Nutrition get nutritionPer100g {
     final extras = FoodDatabase._nutritionExtrasByName[name];
-    return NutritionValues(
-      calories: caloriesPer100g * ratio,
-      protein: proteinPer100g * ratio,
-      carbs: carbsPer100g * ratio,
-      fat: fatPer100g * ratio,
-      fiber: (fiberPer100g ?? extras?.fiber ?? 0) * ratio,
-      sugar: (sugarPer100g ?? extras?.sugar ?? 0) * ratio,
-      sodium: (sodiumPer100g ?? extras?.sodium ?? 0) * ratio,
+    return Nutrition(
+      calories: caloriesPer100g,
+      protein: proteinPer100g,
+      carbs: carbsPer100g,
+      fat: fatPer100g,
+      fiber: fiberPer100g ?? extras?.fiber ?? 0,
+      sugar: sugarPer100g ?? extras?.sugar ?? 0,
+      sodium: sodiumPer100g ?? extras?.sodium ?? 0,
     );
   }
+
+  NutritionValues calculate(double grams) =>
+      nutritionPer100g.calculateByWeight(grams);
 }
 
 class NutritionExtras {
@@ -1577,6 +1621,118 @@ class FoodDatabase {
       }
     }
     return null;
+  }
+}
+
+enum NutritionGoal { fatLoss, maintenance, muscleGain }
+
+extension NutritionGoalDetails on NutritionGoal {
+  String get label => switch (this) {
+    NutritionGoal.fatLoss => '减脂',
+    NutritionGoal.maintenance => '维持',
+    NutritionGoal.muscleGain => '增肌',
+  };
+
+  String get description => switch (this) {
+    NutritionGoal.fatLoss => '热量小幅赤字，优先保留瘦体重',
+    NutritionGoal.maintenance => '围绕当前体重维持热量平衡',
+    NutritionGoal.muscleGain => '温和热量盈余，支持训练恢复',
+  };
+}
+
+/// Product-owned nutrition strategy parameters.
+///
+/// Keep these values in one object so a future remote configuration can
+/// replace them without changing the calculation pipeline.
+class NutritionStrategyConfig {
+  const NutritionStrategyConfig({
+    this.fatLossCalorieFactor = .85,
+    this.maintenanceCalorieFactor = 1.0,
+    this.muscleGainCalorieFactor = 1.08,
+    this.fatLossProteinPerLeanMassKg = 2.3,
+    this.defaultProteinPerBodyWeightKg = 1.6,
+    this.fatCalorieRatio = .25,
+  });
+
+  final double fatLossCalorieFactor;
+  final double maintenanceCalorieFactor;
+  final double muscleGainCalorieFactor;
+  final double fatLossProteinPerLeanMassKg;
+  final double defaultProteinPerBodyWeightKg;
+  final double fatCalorieRatio;
+
+  double calorieFactorFor(NutritionGoal goal) => switch (goal) {
+    NutritionGoal.fatLoss => fatLossCalorieFactor,
+    NutritionGoal.maintenance => maintenanceCalorieFactor,
+    NutritionGoal.muscleGain => muscleGainCalorieFactor,
+  };
+}
+
+class DailyNutritionTarget {
+  const DailyNutritionTarget({
+    required this.goal,
+    required this.leanBodyMassKg,
+    required this.restingMetabolicRate,
+    required this.activityFactor,
+    required this.totalDailyEnergyExpenditure,
+    required this.calories,
+    required this.protein,
+    required this.carbs,
+    required this.fat,
+  });
+
+  final NutritionGoal goal;
+  final double leanBodyMassKg;
+  final double restingMetabolicRate;
+  final double activityFactor;
+  final double totalDailyEnergyExpenditure;
+  final double calories;
+  final double protein;
+  final double carbs;
+  final double fat;
+}
+
+class DailyNutritionCalculator {
+  const DailyNutritionCalculator._();
+
+  static double activityFactor(int trainingDays) {
+    if (trainingDays <= 0) return 1.20;
+    if (trainingDays <= 2) return 1.30;
+    if (trainingDays <= 4) return 1.40;
+    if (trainingDays <= 6) return 1.50;
+    return 1.55;
+  }
+
+  static DailyNutritionTarget calculate({
+    required TrainingProfile profile,
+    NutritionGoal goal = NutritionGoal.fatLoss,
+    NutritionStrategyConfig config = const NutritionStrategyConfig(),
+  }) {
+    final leanBodyMassKg =
+        profile.bodyWeightKg * (1 - profile.bodyFatPercent / 100);
+    final restingMetabolicRate = 370 + 21.6 * leanBodyMassKg;
+    final activity = activityFactor(profile.trainingDays);
+    final totalDailyEnergyExpenditure = restingMetabolicRate * activity;
+    final calories =
+        totalDailyEnergyExpenditure * config.calorieFactorFor(goal);
+    final protein =
+        goal == NutritionGoal.fatLoss
+            ? leanBodyMassKg * config.fatLossProteinPerLeanMassKg
+            : profile.bodyWeightKg * config.defaultProteinPerBodyWeightKg;
+    final fat = calories * config.fatCalorieRatio / 9;
+    final carbs = (calories - protein * 4 - fat * 9) / 4;
+
+    return DailyNutritionTarget(
+      goal: goal,
+      leanBodyMassKg: leanBodyMassKg,
+      restingMetabolicRate: restingMetabolicRate,
+      activityFactor: activity,
+      totalDailyEnergyExpenditure: totalDailyEnergyExpenditure,
+      calories: calories,
+      protein: protein,
+      carbs: carbs,
+      fat: fat,
+    );
   }
 }
 

@@ -165,6 +165,8 @@ class _AddFoodDialogState extends State<AddFoodDialog> {
         fiber: values.fiber,
         sugar: values.sugar,
         sodium: values.sodium,
+        nutritionPer100g:
+            _customUsesConsumedValues ? null : food.nutritionPer100g,
       ),
     );
   }
